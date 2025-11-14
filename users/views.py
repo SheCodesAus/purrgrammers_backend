@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
-from .serializers import UserRegistrationSerializer, CustomUserSerializer
+from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer
 
 User = get_user_model()
 
@@ -43,7 +43,9 @@ class UserRegistrationView(generics.CreateAPIView):
             )
         
 class CustomAuthToken(ObtainAuthToken):
-    """Custom logon view that returns token and user info"""
+    """Custom logon view that returns token and user info AND accepts email or username"""
+
+    serializer_class = EmailOrUsernameLoginSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
@@ -51,9 +53,10 @@ class CustomAuthToken(ObtainAuthToken):
         user = serializer.validated_data['user']
         token, created = Token.objects.get_or_create(user=user)
 
-        # return token and user info using CustomUserSerializer
+        # return the token and user info using CustomUserSerializer
+
         user_serializer = CustomUserSerializer(user)
         return Response({
             'token': token.key,
-            'user': user_serializer.data,
+            'user': user_serializer.data
         })
