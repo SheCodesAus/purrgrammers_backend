@@ -75,7 +75,6 @@ class Vote(models.Model):
         return f"{self.user.username} voted for: {self.card.content[:30]}..." # cut off at 30 characters 
     
     class Meta:
-        unique_together = ['card', 'user'] # ensures one vote per user per card
         ordering = ['-created_at']
     
 class Comment(models.Model):
