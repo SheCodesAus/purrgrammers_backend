@@ -12,6 +12,23 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.username
     
+    def get_board_vote_count(self, retro_board):
+        """Return total number of votes user has cast on specific board"""
+        # using reverse relationship from user to vote
+        return self.votes.filter(
+            card__column__retro_board=retro_board
+        ).count()
+    
+    def get_remaining_board_votes(self, retro_board, max_votes=5):
+        """Return number of votes user has remaining on this board"""
+        used_votes = self.get_board_vote_count(retro_board)
+        return max(0, max_votes - used_votes)
+    
+    def can_vote_on_board(self, retro_board, max_votes=5):
+        """Check if user can cast another vote"""
+        return self.get_board_vote_count(retro_board) < max_votes 
+    
+    
     # this is a helper for the frontend to generate initial avatars using DiceBear
     
     @property
@@ -26,3 +43,4 @@ class CustomUser(AbstractUser):
             return ''.join([name[0].upper() for name in names[:2]]) # 2nd fallback, display name initials
         return self.username[:2].upper() # final fallback, first two letters or username
     
+       
