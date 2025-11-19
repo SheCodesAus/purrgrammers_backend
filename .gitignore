@@ -3,3 +3,4 @@ __pycache__/
 *.vscode
 staticfiles
 .env
+PROJECT_OVERVIEW.md
