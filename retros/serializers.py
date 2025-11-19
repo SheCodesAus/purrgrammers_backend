@@ -70,12 +70,20 @@ class VoteSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
     
     def validate(self, data):
-        """ Check that user hasn't already voted on this card"""
+        """Check the user hasn't exceeded 5 votes on the current board"""
         user = self.context['request'].user
         card = data['card']
+        retro_board = card.column.retro_board
 
-        if Vote.objects.filter(user=user, card=card).exists():
-            raise serializers.ValidationError("You have already voted on this card")
+        # check if user has reached vote limit on this board
+        current_vote_count = user.get_board_vote_count(retro_board)
+        max_votes = 5
+
+        if current_vote_count >= max_votes:
+            raise serializers.ValidationError(
+                f"You have reached the maximum of {max_votes} for this board. "
+                f"You currently have {current_vote_count} votes." 
+            )
         
         return data
     
