@@ -72,11 +72,13 @@ class Vote(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username} voted for: {self.card.content[:30]}..." # cut off at 30 characters 
+        return f"{self.user.username} voted for: {self.card.content[:30]}..." 
     
     class Meta:
-        unique_together = ['card', 'user'] # ensures one vote per user per card
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'card'], name='retros_vote_user_card_idx'),
+        ]
     
 class Comment(models.Model):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='comments')

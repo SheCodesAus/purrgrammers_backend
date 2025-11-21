@@ -37,6 +37,26 @@ class RetroBoardViewSet(viewsets.ModelViewSet): # automatically creates CRUD end
         serializer = ColumnSerializer(columns, many=True)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['get'])
+    def vote_summary(self, request, pk=None):
+        """Get voting summary for the board and current user"""
+        board = self.get_object()
+        user = request.user
+        
+        if not user.is_authenticated:
+            return Response({
+                'error': 'Authentication required'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        return Response({
+            'board_id': board.id,
+            'board_title': board.title,
+            'max_votes_per_user': 5,
+            'user_total_votes': board.get_user_vote_count(user),
+            'user_remaining_votes': board.get_user_remaining_votes(user),
+            'can_vote_more': user.can_vote_on_board(board)
+        })
+    
 class ColumnViewSet(viewsets.ModelViewSet):
     """
     Viewset for managing Columns
@@ -83,25 +103,55 @@ class CardViewSet(viewsets.ModelViewSet):
     # creates endpoint for /api/cards/5/vote/ with the only method: POST
     @action(detail=True, methods=['post'])  
     def vote(self, request, pk=None):  
-        """Vote on a card - creates new vote"""
-        card = self.get_object() # gets the card (ID from URL)
-        vote_data = {'card': card.id} # prepares data for serializer
+        """Vote on a card - creates new vote (allows multiple votes per user)"""
+        card = self.get_object()
+        
+        # Check if user can vote on this board
+        if not request.user.can_vote_on_board(card.column.retro_board):
+            remaining = request.user.get_remaining_board_votes(card.column.retro_board)
+            return Response({
+                'error': f'You have reached the maximum of 5 votes for this board. Remaining votes: {remaining}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        vote_data = {'card': card.id}
         vote_serializer = VoteSerializer(data=vote_data, context={'request': request})
         if vote_serializer.is_valid():
             vote_serializer.save()
-            return Response({'message': 'Vote added'}, status=status.HTTP_201_CREATED)
+            remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
+            return Response({
+                'message': 'Vote added',
+                'remaining_votes': remaining_votes,
+                'total_card_votes': card.vote_count,
+                'user_votes_on_card': card.votes.filter(user=request.user).count()
+            }, status=status.HTTP_201_CREATED)
         return Response(vote_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['delete'], url_path='vote')  # Different URL path
-    def remove_vote(self, request, pk=None):  # Different method name
-        """Remove vote from a card"""
+    @action(detail=True, methods=['delete'], url_path='vote')
+    def remove_vote(self, request, pk=None):
+        """Remove one vote from a card (removes most recent vote if multiple)"""
         card = self.get_object()
         try:
-            vote = Vote.objects.get(user=request.user, card=card)
+            # Get the most recent vote from this user on this card
+            vote = card.votes.filter(user=request.user).order_by('-created_at').first()
+            if not vote:
+                return Response({
+                    'error': 'No vote found to remove'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
             vote.delete()
-            return Response({'message': 'Vote removed'}, status=status.HTTP_204_NO_CONTENT)
-        except Vote.DoesNotExist:
-            return Response({'error': 'Vote not found'}, status=status.HTTP_404_NOT_FOUND)
+            remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
+            user_votes_on_card = card.votes.filter(user=request.user).count()
+            
+            return Response({
+                'message': 'Vote removed',
+                'remaining_votes': remaining_votes,
+                'total_card_votes': card.vote_count,
+                'user_votes_on_card': user_votes_on_card
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': f'Error removing vote: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 class VoteViewSet(viewsets.ModelViewSet):
     """

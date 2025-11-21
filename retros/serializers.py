@@ -5,16 +5,37 @@ from .models import RetroBoard, Column, Card, Vote, Comment
 class RetroBoardSerializer(serializers.ModelSerializer):
     created_by = CustomUserSerializer(read_only=True) # for GET requests. Returns full user object with all details
     created_by_id = serializers.IntegerField(write_only=True, required=False) # for POST requests - just user id
+    user_vote_count = serializers.SerializerMethodField()
+    user_remaining_votes = serializers.SerializerMethodField()
+    max_votes_per_user = serializers.SerializerMethodField()
     
     class Meta:
         model = RetroBoard
-        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active']
+        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user']
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def create(self, validated_data):
         
         validated_data['created_by_id'] = self.context['request'].user.id
         return super().create(validated_data)
+    
+    def get_user_vote_count(self, obj):
+        """Get current user's total votes on board"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.get_user_vote_count(request.user)
+        return 0
+    
+    def get_user_remaining_votes(self, obj):
+        """Get users remaining votes on board"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.get_user_remaining_votes(request.user)
+        return 5
+    
+    def get_max_votes_per_user(self, obj):
+        """Retrun the max votes allowed per user (5)"""
+        return 5
 
 class ColumnSerializer(serializers.ModelSerializer):
     retro_board = serializers.PrimaryKeyRelatedField(queryset=RetroBoard.objects.all())
@@ -34,11 +55,12 @@ class CardSerializer(serializers.ModelSerializer):
     created_by = CustomUserSerializer(read_only=True) # for GET requests - full user details
     created_by_id = serializers.IntegerField(write_only=True, required=False) # for POST requests, accepts just integer id
     vote_count = serializers.ReadOnlyField() # includes the @property from the model
-    user_has_voted = serializers.SerializerMethodField() # checks if current user has already voted on this card
+    user_vote_count = serializers.SerializerMethodField() # changed from has_user_voted
+    user_board_votes_remaining = serializers.SerializerMethodField() # new field for voting logic update
 
     class Meta:
         model = Card
-        fields = ['id', 'column', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'vote_count', 'user_has_voted']
+        fields = ['id', 'column', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'vote_count', 'user_vote_count', 'user_board_votes_remining']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
@@ -46,13 +68,19 @@ class CardSerializer(serializers.ModelSerializer):
         validated_data['created_by_id'] = self.context['request'].user.id
         return super().create(validated_data)
     
-    def get_user_has_voted(self, obj):
-        """Check if the current user has already voted on this card"""
-        # won't work fully until we add user authentication
+    def get_user_vote_count(self, obj):
+        """Get number of times current user has voted on card"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return obj.votes.filter(user=request.user).exists()
-        return False
+            return obj.votes.filter(user=request.user).count()
+        return 0
+    
+    def get_user_board_votes_remaining(self, obj):
+        """Get remaining votes for current user on board"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return request.user.get_remaining_board_votes(obj.column.retro_board)
+        return 5 
     
 class VoteSerializer(serializers.ModelSerializer):
     card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
@@ -70,12 +98,20 @@ class VoteSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
     
     def validate(self, data):
-        """ Check that user hasn't already voted on this card"""
+        """Check the user hasn't exceeded 5 votes on the current board"""
         user = self.context['request'].user
         card = data['card']
+        retro_board = card.column.retro_board
 
-        if Vote.objects.filter(user=user, card=card).exists():
-            raise serializers.ValidationError("You have already voted on this card")
+        # check if user has reached vote limit on this board
+        current_vote_count = user.get_board_vote_count(retro_board)
+        max_votes = 5
+
+        if current_vote_count >= max_votes:
+            raise serializers.ValidationError(
+                f"You have reached the maximum of {max_votes} for this board. "
+                f"You currently have {current_vote_count} votes." 
+            )
         
         return data
     
