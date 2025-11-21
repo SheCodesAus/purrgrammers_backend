@@ -17,13 +17,22 @@ class TeamMembershipSerializer(serializers.ModelSerializer):
 class TeamSerializer(serializers.ModelSerializer):
     created_by = CustomUserSerializer(read_only=True)
     memberships = TeamMembershipSerializer(many=True, read_only=True)
-    members = CustomUserSerializer(read_only=True)
+    members = CustomUserSerializer(many=True, read_only=True)
     member_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Team 
-        fields = ['id', 'name', 'description', 'created_by', 'created_at', 'updated_at', 'is_active', 'memberships', 'member_count']
+        fields = ['id', 'name', 'description', 'created_by', 'created_at', 'updated_at', 'is_active', 'memberships', 'members', 'member_count']
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+    
+    def get_member_count(self, obj):
+        """Return the number of active members in the team"""
+        return obj.members.count()
+    
+    def create(self, validated_data):
+        """Override create to set created_by from request user"""
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
 
 class TeamMembershipCreateSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(write_only=True)

@@ -48,12 +48,10 @@ class RetroBoard(models.Model):
 
 class Column(models.Model):
     COLUMN_TYPES = [
-        ('start', 'Start Doing'),
-        ('stop', 'Stop Doing'),
-        ('keep', 'Keep Doing'),
-        ('more', 'More Of'),
-        ('less', 'Less Of'),
-        ('custom', 'Custom'),
+        ('mad', 'Mad'),
+        ('glad', 'Glad'), 
+        ('sad', 'Sad'),
+        ('custom', 'Custom'),  # Keeps flexibility for custom names
     ]
 
     retro_board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name='columns')
