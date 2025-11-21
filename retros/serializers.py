@@ -8,10 +8,12 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     user_vote_count = serializers.SerializerMethodField()
     user_remaining_votes = serializers.SerializerMethodField()
     max_votes_per_user = serializers.SerializerMethodField()
+    assigned_teams = serializers.SerializerMethodField()
+    team_count = serializers.SerializerMethodField()
     
     class Meta:
         model = RetroBoard
-        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user']
+        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'assigned_teams', 'team_count']
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def create(self, validated_data):
@@ -36,6 +38,16 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     def get_max_votes_per_user(self, obj):
         """Retrun the max votes allowed per user (5)"""
         return 5
+    
+    def get_assigned_teams(self, obj):
+        """Get basic info about assigned teams"""
+        # Import here to avoid circular imports
+        from teams.serializers import TeamListSerializer
+        return TeamListSerializer(obj.assigned_teams.all(), many=True).data
+    
+    def get_team_count(self, obj):
+        """Return number of teams assigned to this board"""
+        return obj.assigned_teams.count()
 
 class ColumnSerializer(serializers.ModelSerializer):
     retro_board = serializers.PrimaryKeyRelatedField(queryset=RetroBoard.objects.all())

@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'retros.apps.RetrosConfig',
     'users.apps.UsersConfig',
+    'teams.apps.TeamsConfig',
 ]
 
 REST_FRAMEWORK = {
