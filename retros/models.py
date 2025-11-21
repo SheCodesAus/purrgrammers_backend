@@ -11,10 +11,37 @@ class RetroBoard(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    assigned_teams = models.ManyToManyField('teams.Team', blank=True, related_name='retro_boards')
 
     def __str__(self):
         return self.title
     
+
+    def get_user_vote_count(self, user):
+        """Return number of votes user has cast on board"""
+        return user.get_board_vote_count(self)
+    
+    def get_user_remaining_votes(self, user, max_votes=5):
+        """REturn number of votes remaining"""
+        return user.get_remaining_board_votes(self, max_votes)
+    
+    def get_total_votes(self):
+        """Return total number of votes cast on this entire board"""
+        return Vote.objects.filter(card__column__retro_board=self).count()
+
+    def get_board_vote_summary(self):
+        """Return voting statistics for this board"""
+        from django.db.models import Count
+        return {
+            'total_votes': self.get_total_votes(),
+            'total_cards': Card.objects.filter(column__retro_board=self).count(),
+            'most_voted_cards': Card.objects.filter(
+                column__retro_board=self
+            ).annotate(
+                vote_count=Count('votes')
+            ).order_by('-vote_count')[:5]
+        }
+
     # this automatically returns boards with the newest first
     class Meta:
         ordering = ['-created_at']

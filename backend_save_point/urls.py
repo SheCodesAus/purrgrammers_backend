@@ -7,4 +7,5 @@ urlpatterns = [
     path('api/', include('retros.urls')),
     path('api/token/', obtain_auth_token, name='api-token'),
     path('api/users/', include('users.urls')),
+    path('api/', include('teams.urls')),
 ]
