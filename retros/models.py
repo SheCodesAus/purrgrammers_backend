@@ -48,9 +48,9 @@ class RetroBoard(models.Model):
 
 class Column(models.Model):
     COLUMN_TYPES = [
-        ('mad', 'Mad'),
-        ('glad', 'Glad'), 
-        ('sad', 'Sad'),
+        ('start', 'Start'),
+        ('stop', 'Stop'), 
+        ('continue', 'Continue'),
         ('custom', 'Custom'),  # Keeps flexibility for custom names
     ]
 
