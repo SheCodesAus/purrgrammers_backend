@@ -86,7 +86,9 @@ class Card(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
 
     def __str__(self):
-        return f"{self.column.title}: {self.content[:50]}..." # string slicing to only take 50 first characters which would be messy
+        if self.column:
+            return f"{self.column.title}: {self.content[:50]}..."
+        return f"Pool card: {self.content[:50]}..." # For cards in pool without column
     
     # helper for calculating vote counts without having to call a method. Always accurate and up to date
     @property
