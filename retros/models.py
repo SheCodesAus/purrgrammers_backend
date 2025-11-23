@@ -72,7 +72,7 @@ class Column(models.Model):
 class Card(models.Model):
     column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='cards', null=True, blank=True)
     retro_board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name='all_cards', null=True, blank=True)
-    content = models.TextField()
+    content = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cards')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
