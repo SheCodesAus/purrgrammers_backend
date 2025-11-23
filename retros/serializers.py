@@ -83,11 +83,18 @@ class CardSerializer(serializers.ModelSerializer):
     vote_count = serializers.ReadOnlyField() # includes the @property from the model
     user_vote_count = serializers.SerializerMethodField() # changed from has_user_voted
     user_board_votes_remaining = serializers.SerializerMethodField() # new field for voting logic update
+    color = serializers.SerializerMethodField() # get color from column
 
     class Meta:
         model = Card
-        fields = ['id', 'column', 'retro_board', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'status', 'vote_count', 'user_vote_count', 'user_board_votes_remaining']
+        fields = ['id', 'column', 'retro_board', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'status', 'vote_count', 'user_vote_count', 'user_board_votes_remaining', 'color']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_color(self, obj):
+        """Get color from the card's column, or default for draft cards"""
+        if obj.column:
+            return obj.column.color
+        return '#94A3B8'  # Default gray for cards in pool
 
     def create(self, validated_data):
         # automatically set created_by to current user
