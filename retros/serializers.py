@@ -58,15 +58,22 @@ class RetroBoardSerializer(serializers.ModelSerializer):
 class ColumnSerializer(serializers.ModelSerializer):
     retro_board = serializers.PrimaryKeyRelatedField(queryset=RetroBoard.objects.all())
     card_count = serializers.SerializerMethodField() # count of cards in this column
+    cards = serializers.SerializerMethodField() # actual cards in this column
 
     class Meta:
         model = Column
-        fields = ['id', 'retro_board', 'title', 'column_type', 'position', 'color', 'created_at', 'updated_at', 'card_count']
+        fields = ['id', 'retro_board', 'title', 'column_type', 'position', 'color', 'created_at', 'updated_at', 'card_count', 'cards']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_card_count(self, obj):
         """Return the number of cards in this column"""
         return obj.cards.count()
+    
+    def get_cards(self, obj):
+        """Return all cards in this column"""
+        cards = obj.cards.all().order_by('position', 'created_at')
+        # Use CardSerializer but avoid circular import by importing here
+        return CardSerializer(cards, many=True, context=self.context).data
     
 class CardSerializer(serializers.ModelSerializer):
     column = serializers.PrimaryKeyRelatedField(queryset=Column.objects.all(), required=False, allow_null=True) 
