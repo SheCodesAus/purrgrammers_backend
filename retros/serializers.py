@@ -69,7 +69,8 @@ class ColumnSerializer(serializers.ModelSerializer):
         return obj.cards.count()
     
 class CardSerializer(serializers.ModelSerializer):
-    column = serializers.PrimaryKeyRelatedField(queryset=Column.objects.all()) 
+    column = serializers.PrimaryKeyRelatedField(queryset=Column.objects.all(), required=False, allow_null=True) 
+    retro_board = serializers.PrimaryKeyRelatedField(queryset=RetroBoard.objects.all(), required=False, allow_null=True)
     created_by = CustomUserSerializer(read_only=True) # for GET requests - full user details
     created_by_id = serializers.IntegerField(write_only=True, required=False) # for POST requests, accepts just integer id
     vote_count = serializers.ReadOnlyField() # includes the @property from the model
@@ -78,12 +79,17 @@ class CardSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Card
-        fields = ['id', 'column', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'vote_count', 'user_vote_count', 'user_board_votes_remining']
+        fields = ['id', 'column', 'retro_board', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'status', 'vote_count', 'user_vote_count', 'user_board_votes_remaining']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         # automatically set created_by to current user
         validated_data['created_by_id'] = self.context['request'].user.id
+        
+        # Auto-set status based on column presence
+        if 'status' not in validated_data:
+            validated_data['status'] = 'placed' if validated_data.get('column') else 'draft'
+        
         return super().create(validated_data)
     
     def get_user_vote_count(self, obj):
