@@ -57,6 +57,18 @@ class RetroBoardViewSet(viewsets.ModelViewSet): # automatically creates CRUD end
             'can_vote_more': user.can_vote_on_board(board)
         })
     
+    @action(detail=True, methods=['get'])
+    def card_pool(self, request, pk=None):
+        """Get all draft cards for this board"""
+        board = self.get_object()
+        draft_cards = Card.objects.filter(
+            retro_board=board,
+            status='draft',
+            column__isnull=True
+        )
+        serializer = CardSerializer(draft_cards, many=True, context={'request': request})
+        return Response(serializer.data)
+    
 class ColumnViewSet(viewsets.ModelViewSet):
     """
     Viewset for managing Columns
@@ -152,6 +164,27 @@ class CardViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'Error removing vote: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['patch'])
+    def move_to_column(self, request, pk=None):
+        """Move card from pool to column or between columns"""
+        card = self.get_object()
+        column_id = request.data.get('column_id')
+        position = request.data.get('position', 0)
+        
+        if column_id:
+            column = Column.objects.get(id=column_id)
+            card.column = column
+            card.retro_board = column.retro_board  # Ensure retro_board is set
+            card.status = 'placed'
+        else:
+            card.column = None
+            card.status = 'draft'
+            # Keep retro_board when moving back to pool
+        
+        card.position = position
+        card.save()
+        return Response(CardSerializer(card, context={'request': request}).data)
     
 class VoteViewSet(viewsets.ModelViewSet):
     """

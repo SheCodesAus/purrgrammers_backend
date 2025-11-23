@@ -70,13 +70,20 @@ class Column(models.Model):
         unique_together = ['retro_board', 'position'] # stops different columns from having the same positions
 
 class Card(models.Model):
-    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='cards')
+    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='cards', null=True, blank=True)
+    retro_board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name='all_cards', null=True, blank=True)
     content = models.TextField()
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='cards')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     position = models.PositiveIntegerField(default=0)
     is_anonymous = models.BooleanField(default=False)
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),      # Card in pool (not assigned to column)
+        ('placed', 'Placed'),    # Card placed in a column
+    ]
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
 
     def __str__(self):
         return f"{self.column.title}: {self.content[:50]}..." # string slicing to only take 50 first characters which would be messy
