@@ -8,7 +8,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'display_name', 'initials', 'created_at']
+        fields = ['id', 'username', 'first_name', 'last_name', 'initials', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 # separate serializer for user registration: more maintainable, easier to test and keeps logic simpler
@@ -19,7 +19,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'first_name', 'last_name', 'display_name', 'password', 'password_confirm']
+        fields = ['username', 'email', 'first_name', 'last_name', 'password', 'password_confirm']
 
     def validate(self, data):
         """Check that passwords match"""
