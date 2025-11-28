@@ -1,9 +1,12 @@
 from rest_framework import generics, permissions, status
+from rest_framework.views import APIView  
 from rest_framework.response import Response
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
+from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
-from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer
+from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer, UserProfileSerializer
+from .models import UserProfile
 
 User = get_user_model()
 
@@ -60,3 +63,25 @@ class CustomAuthToken(ObtainAuthToken):
             'token': token.key,
             'user': user_serializer.data
         })
+    
+# we are using APIView on user profile, not viewset
+
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get current users profile"""
+        # Get or create profile
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        serializer = UserProfileSerializer(profile)
+        return Response(serializer.data)
+    
+    def patch(self, request):
+        """Update profile"""
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

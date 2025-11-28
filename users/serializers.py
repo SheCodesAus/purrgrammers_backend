@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
+from .models import UserProfile
 
 User = get_user_model()
 
@@ -73,3 +74,17 @@ class EmailOrUsernameLoginSerializer(serializers.Serializer):
                 'Must include "username" and "password".',
                 code='authorization'
             )
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer for profile data"""
+
+    teams = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserProfile
+        fields = ['bio', 'location', 'created_at', 'updated_at', 'teams']
+        read_only_fields = ['created_at', 'updated_at', 'teams']
+
+    def get_teams(self, obj):
+        """Get teams for users profile"""
+        return obj.user.teams.filter(is_active=True).values('id', 'name', 'description')
