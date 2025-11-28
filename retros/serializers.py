@@ -3,8 +3,13 @@ from users.serializers import CustomUserSerializer
 from .models import RetroBoard, Column, Card, Vote, Comment
 
 class RetroBoardSerializer(serializers.ModelSerializer):
+    """
+    Serializer for RetroBoard - handles complex nested data and user-specific fields
+    Includes voting info, teams, and columns for complete board view
+    """
     created_by = CustomUserSerializer(read_only=True) # for GET requests. Returns full user object with all details
     created_by_id = serializers.IntegerField(write_only=True, required=False) # for POST requests - just user id
+    # SerializerMethodField = calculated field that calls a method to get the value
     user_vote_count = serializers.SerializerMethodField()
     user_remaining_votes = serializers.SerializerMethodField()
     max_votes_per_user = serializers.SerializerMethodField()
@@ -14,18 +19,22 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = RetroBoard
+        # All fields that will be included in API responses
         fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'assigned_teams', 'team_count', 'columns']
+        # Fields that can't be modified via API (timestamps, auto-generated IDs)
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def create(self, validated_data):
-        
+        # Override create to automatically set created_by to current user
         validated_data['created_by_id'] = self.context['request'].user.id
         return super().create(validated_data)
     
     def get_user_vote_count(self, obj):
         """Get current user's total votes on board"""
+        # Access request from context to get current user
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            # Call model method we created
             return obj.get_user_vote_count(request.user)
         return 0
     
@@ -34,15 +43,15 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.get_user_remaining_votes(request.user)
-        return 5
+        return 5  # Default if not authenticated
     
     def get_max_votes_per_user(self, obj):
         """Retrun the max votes allowed per user (5)"""
-        return 5
+        return 5  # Business rule: 5 votes per user per board
     
     def get_assigned_teams(self, obj):
         """Get basic info about assigned teams"""
-        # Import here to avoid circular imports
+        # Import here to avoid circular imports (both files importing each other)
         from teams.serializers import TeamListSerializer
         return TeamListSerializer(obj.assigned_teams.all(), many=True).data
     
@@ -52,10 +61,15 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     
     def get_columns(self, obj):
         """Get all columns for this board"""
+        # Order by position to maintain consistent column order
         columns = obj.columns.all().order_by('position')
         return ColumnSerializer(columns, many=True).data
 
 class ColumnSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Column - includes cards and card count for frontend convenience
+    """
+    # PrimaryKeyRelatedField = accepts just the ID of the related object
     retro_board = serializers.PrimaryKeyRelatedField(queryset=RetroBoard.objects.all())
     card_count = serializers.SerializerMethodField() # count of cards in this column
     cards = serializers.SerializerMethodField() # actual cards in this column
@@ -71,11 +85,17 @@ class ColumnSerializer(serializers.ModelSerializer):
     
     def get_cards(self, obj):
         """Return all cards in this column"""
+        # Order by position first, then creation time for consistent display
         cards = obj.cards.all().order_by('position', 'created_at')
         # Use CardSerializer but avoid circular import by importing here
+        # Pass context so CardSerializer can access current user for voting info
         return CardSerializer(cards, many=True, context=self.context).data
     
 class CardSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Card - handles draft/placed states, voting info, and column colors
+    """
+    # allow_null=True because cards can be in pool without a column
     column = serializers.PrimaryKeyRelatedField(queryset=Column.objects.all(), required=False, allow_null=True) 
     retro_board = serializers.PrimaryKeyRelatedField(queryset=RetroBoard.objects.all(), required=False, allow_null=True)
     created_by = CustomUserSerializer(read_only=True) # for GET requests - full user details
@@ -94,13 +114,14 @@ class CardSerializer(serializers.ModelSerializer):
         """Get color from the card's column, or default for draft cards"""
         if obj.column:
             return obj.column.color
-        return '#94A3B8'  # Default gray for cards in pool
+        return '#94A3B8'  # Default gray for cards in pool (draft state)
 
     def create(self, validated_data):
         # automatically set created_by to current user
         validated_data['created_by_id'] = self.context['request'].user.id
         
         # Auto-set status based on column presence
+        # If card has column = placed, if no column = draft (in pool)
         if 'status' not in validated_data:
             validated_data['status'] = 'placed' if validated_data.get('column') else 'draft'
         
@@ -110,6 +131,7 @@ class CardSerializer(serializers.ModelSerializer):
         """Get number of times current user has voted on card"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            # Filter votes on this card by current user
             return obj.votes.filter(user=request.user).count()
         return 0
     
@@ -117,10 +139,14 @@ class CardSerializer(serializers.ModelSerializer):
         """Get remaining votes for current user on board"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            # Use the model method from CustomUser
             return request.user.get_remaining_board_votes(obj.column.retro_board)
-        return 5 
+        return 5  # Default if not authenticated
     
 class VoteSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Vote - includes validation to prevent vote limit exceeded
+    """
     card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
     user = CustomUserSerializer(read_only=True) # for GET requests
     user_id = serializers.IntegerField(write_only=True, required=False) # for POST requests
@@ -143,9 +169,10 @@ class VoteSerializer(serializers.ModelSerializer):
 
         # check if user has reached vote limit on this board
         current_vote_count = user.get_board_vote_count(retro_board)
-        max_votes = 5
+        max_votes = 5  # Business rule
 
         if current_vote_count >= max_votes:
+            # Raise validation error to prevent vote creation
             raise serializers.ValidationError(
                 f"You have reached the maximum of {max_votes} for this board. "
                 f"You currently have {current_vote_count} votes." 
@@ -154,6 +181,9 @@ class VoteSerializer(serializers.ModelSerializer):
         return data
     
 class CommentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Comment - simple CRUD with automatic user assignment
+    """
     card = serializers.PrimaryKeyRelatedField(queryset=Card.objects.all())
     user = CustomUserSerializer(read_only=True) # for GET requests
     user_id = serializers.IntegerField(write_only=True, required=False) # for POST requests

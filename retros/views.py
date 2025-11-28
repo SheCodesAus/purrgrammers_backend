@@ -1,8 +1,19 @@
-# NOTE: using mostly viewsets, but will use APIView if needed for custom behaviour or @actions
-from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action # lets us add custom routes for @actions
-from rest_framework.response import Response
-from django.contrib.auth import get_user_model
+# RETROS VIEWS - Complex ViewSet Patterns & Custom Actions
+# =========================================================
+# This file demonstrates advanced DRF patterns:
+# - ModelViewSet for full CRUD operations
+# - Custom @action decorators for business-specific endpoints
+# - Permission handling and authentication
+# - Complex business logic (voting system)
+# - Error handling and user feedback
+# - Cross-model operations and relationships
+
+# IMPORTS - DRF Core Components
+# ===============================
+from rest_framework import viewsets, permissions, status  # Core DRF classes
+from rest_framework.decorators import action             # Custom endpoint decorator
+from rest_framework.response import Response             # JSON response wrapper
+from django.contrib.auth import get_user_model          # Dynamic user model reference
 from .models import RetroBoard, Column, Card, Vote, Comment
 from .serializers import (
     RetroBoardSerializer,
@@ -12,215 +23,586 @@ from .serializers import (
     CommentSerializer
 )
 
+# SECURITY NOTE: Dynamic User Model
+# ===================================
+# get_user_model() returns the active user model (could be custom)
+# This is more flexible than importing a specific User model
 User = get_user_model()
 
-class RetroBoardViewSet(viewsets.ModelViewSet): # automatically creates CRUD endpoints
+# RETRO BOARD MANAGEMENT - Main ViewSet
+# =======================================
+class RetroBoardViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing RetroBoards
-    Provides: list, create, retrieve, update, destroy
-    Creates endpoints: GET, POST, PUT, DELETE for /api/retro-boards/
+    MAIN BOARD MANAGEMENT VIEWSET
+    
+    ModelViewSet provides these endpoints automatically:
+    - GET    /api/retro-boards/       -> list() - all boards
+    - POST   /api/retro-boards/       -> create() - new board
+    - GET    /api/retro-boards/{id}/  -> retrieve() - specific board
+    - PUT    /api/retro-boards/{id}/  -> update() - full update
+    - PATCH  /api/retro-boards/{id}/  -> partial_update() - partial update
+    - DELETE /api/retro-boards/{id}/  -> destroy() - delete board
+    
+    PLUS custom @action methods for business-specific operations
+    
+    WHY MODELVIEWSET?
+    - Provides full CRUD automatically
+    - Can override methods for custom behavior
+    - Easy to add custom actions with @action decorator
+    - Follows REST conventions out of the box
     """
     
-    queryset = RetroBoard.objects.all()
-    serializer_class = RetroBoardSerializer
-    permission_classes = [permissions.IsAuthenticated] # Authentication enabled!
+    queryset = RetroBoard.objects.all()           # Base query (modified by get_queryset)
+    serializer_class = RetroBoardSerializer       # How to serialize/deserialize data
+    permission_classes = [permissions.IsAuthenticated]  # Must be logged in
     
     def get_queryset(self):
-        """Only return active boards, ordered by creation date"""
+        """
+        CUSTOM QUERY FILTERING
+        Override to modify what data users can see
+        Only return active boards, ordered by creation date
+        
+        PERFORMANCE NOTE: This runs for every request
+        Consider adding select_related/prefetch_related for optimization
+        """
         return RetroBoard.objects.filter(is_active=True).order_by('-created_at')
     
-    @action(detail=True, methods=['get'])
+    # CUSTOM ACTION: Get Board Columns
+    # ==================================
+    @action(detail=True, methods=['get'])  # Creates: GET /api/retro-boards/{id}/columns/
     def columns(self, request, pk=None):
-        """Get all columns for a specific board"""
-        board = self.get_object()
-        columns = board.columns.all()
-        serializer = ColumnSerializer(columns, many=True)
+        """
+        RELATIONSHIP TRAVERSAL ACTION
+        Get all columns for a specific board
+        
+        WHY CUSTOM ACTION?
+        - More semantic than /api/columns/?board_id=X
+        - Ensures proper board context and permissions
+        - Can add board-specific column logic here
+        
+        URL PATTERN: /api/retro-boards/5/columns/
+        """
+        board = self.get_object()              # Get board from URL param (pk)
+        columns = board.columns.all()         # Use reverse relationship
+        serializer = ColumnSerializer(columns, many=True)  # Serialize queryset
         return Response(serializer.data)
     
-    @action(detail=True, methods=['get'])
+    # CUSTOM ACTION: Voting Summary
+    # ===============================
+    @action(detail=True, methods=['get'])  # Creates: GET /api/retro-boards/{id}/vote_summary/
     def vote_summary(self, request, pk=None):
-        """Get voting summary for the board and current user"""
+        """
+        BUSINESS LOGIC ACTION: Get voting summary for the board and current user
+        
+        COMPLEX BUSINESS RULES:
+        - Each user gets maximum 5 votes per board
+        - Need to track votes used vs remaining
+        - Must handle unauthenticated users gracefully
+        
+        RETURNS: JSON with voting constraints and current status
+        """
         board = self.get_object()
         user = request.user
         
+        # SECURITY CHECK: Authentication Required
+        # =========================================
+        # Even though permission_classes handles this globally,
+        # being explicit in voting logic is good practice
         if not user.is_authenticated:
             return Response({
                 'error': 'Authentication required'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
+        # BUSINESS LOGIC: Vote Counting
+        # ===============================
+        # Use model methods to encapsulate complex vote counting logic
         return Response({
             'board_id': board.id,
             'board_title': board.title,
-            'max_votes_per_user': 5,
-            'user_total_votes': board.get_user_vote_count(user),
-            'user_remaining_votes': board.get_user_remaining_votes(user),
-            'can_vote_more': user.can_vote_on_board(board)
+            'max_votes_per_user': 5,                                    # Business rule
+            'user_total_votes': board.get_user_vote_count(user),       # Model method
+            'user_remaining_votes': board.get_user_remaining_votes(user), # Model method
+            'can_vote_more': user.can_vote_on_board(board)             # User method
         })
     
+    # CUSTOM ACTION: Card Pool Management
+    # ===================================== 
     @action(detail=True, methods=['get'])
     def card_pool(self, request, pk=None):
-        """Get all draft cards for this board"""
+        """
+        DRAFT CARD POOL ACCESS
+        
+        BUSINESS LOGIC:
+        - Cards start in 'draft' status before being placed in columns
+        - Card pool shows all unplaced cards for a retro board
+        - Users can move cards from pool to columns via drag & drop
+        
+        QUERY FILTERING:
+        - status='draft': Only unplaced cards
+        - column__isnull=True: Not assigned to any column yet
+        - retro_board=board: Scoped to current board
+        
+        URL PATTERN: GET /api/retro-boards/{id}/card-pool/
+        """
         board = self.get_object()
+        
+        # BUSINESS RULE QUERY
+        # ======================
+        # Find all cards that are:
+        # 1. Draft status (not yet placed)
+        # 2. Not assigned to a column
+        # 3. Belong to this retro board
         draft_cards = Card.objects.filter(
             retro_board=board,
             status='draft',
             column__isnull=True
         )
+        
+        # CONTEXT PASSING
+        # ==================
+        # Pass request context for user-specific data (voting status)
         serializer = CardSerializer(draft_cards, many=True, context={'request': request})
         return Response(serializer.data)
     
+# COLUMN MANAGEMENT - Ordered Content ViewSet
+# ==============================================
 class ColumnViewSet(viewsets.ModelViewSet):
     """
-    Viewset for managing Columns
-    Provides: list, create, retrieve, update, destroy
+    COLUMN MANAGEMENT VIEWSET
+    
+    BUSINESS PURPOSE:
+    - Manages retro board columns (Start, Stop, Continue)
+    - Maintains display order through position field
+    - Provides card access through relationship
+    
+    MODELVIEWSET FEATURES:
+    - Full CRUD operations for columns
+    - Automatic REST endpoint generation
+    - Custom ordering via get_queryset override
+    - Relationship traversal with custom actions
+    
+    WHY SEPARATE FROM BOARDS?
+    - Columns can be customized per board
+    - Different retro formats may need different columns
+    - Allows for drag & drop reordering
     """
 
-    queryset = Column.objects.all() # queries the Column model
-    serializer_class = ColumnSerializer # how to convert between Python objects and JSON
-    permission_classes = [permissions.IsAuthenticated] # Authentication enabled!
+    queryset = Column.objects.all()                        # Base queryset
+    serializer_class = ColumnSerializer                    # Serialization handling
+    permission_classes = [permissions.IsAuthenticated]    # Auth required
 
-    # overrides default behaviour and returns columns ordered by position
     def get_queryset(self):
-        """Return columns ordered by position"""
+        """
+        POSITION-BASED ORDERING
+        
+        WHY OVERRIDE?
+        - UI needs consistent left-to-right column order
+        - position field determines visual layout
+        - Ensures Start -> Stop -> Continue order
+        
+        BUSINESS RULE:
+        - position=0: Leftmost column (usually 'Start')
+        - position=1: Middle column (usually 'Stop') 
+        - position=2: Rightmost column (usually 'Continue')
+        """
         return Column.objects.all().order_by('position')
     
-    # creates custom endpoint: /api/columns/5/cards/ to get all cards in a column
+    # 🃏 RELATIONSHIP ACTION: Get Column Cards
+    # ======================================
     @action(detail=True, methods=['get'])
     def cards(self, request, pk=None):
-        """Get all cards for a specific column"""
+        """
+        COLUMN CARD ACCESS ACTION
+        
+        RELATIONSHIP TRAVERSAL:
+        - Uses reverse ForeignKey relationship
+        - column.cards.all() accesses related Card objects
+        - related_name='cards' defined in Card model
+        
+        CONTEXT IMPORTANCE:
+        - CardSerializer needs request context
+        - Required for user-specific voting information
+        - Enables 'user_has_voted' SerializerMethodField
+        
+        URL PATTERN: GET /api/columns/{id}/cards/
+        
+        WHY NOT DIRECT QUERY?
+        - Ensures proper column context and permissions
+        - Can add column-specific card filtering later
+        - More semantic than /api/cards/?column_id=X
+        """
         column = self.get_object()
-        cards = column.cards.all() # uses the related_name from the Card model
-        serializer = CardSerializer(cards, many=True, context={'request': request}) # sends request context to CardSerializer (needed for user has voted)
+        
+        # REVERSE RELATIONSHIP ACCESS
+        # =============================
+        # Access cards through ForeignKey reverse relationship
+        cards = column.cards.all()  # Uses related_name from Card.column field
+        
+        # CONTEXT FOR USER-SPECIFIC DATA
+        # =================================
+        # Pass request context for voting information
+        serializer = CardSerializer(cards, many=True, context={'request': request})
         return Response(serializer.data)
     
+# CARD MANAGEMENT - Complex Business Logic ViewSet  
+# =================================================
 class CardViewSet(viewsets.ModelViewSet):
     """
-    Viewset for managing Cards
-    Provides: list, create, retrieve, update, destroy
-    Creates endpoints: GET, POST, PUT, DELETE for /api/cards/
+    CARD MANAGEMENT WITH VOTING SYSTEM
+    
+    This ViewSet demonstrates advanced patterns:
+    - Custom create behavior (perform_create)
+    - Complex business logic in custom actions
+    - Error handling with detailed user feedback
+    - State transitions (draft -> placed)
+    - Vote counting and validation
+    
+    BUSINESS RULES:
+    - Cards start in 'draft' status (in card pool)
+    - Users can vote on cards (max 5 votes per board)
+    - Cards can be moved between columns
+    - Vote removal follows LIFO (Last In, First Out)
     """
 
-    queryset = Card.objects.all() # queries the Card model
-    serializer_class = CardSerializer # convert between Python objects and JSON
-    permission_classes = [permissions.IsAuthenticated] # Authentication enabled!
+    queryset = Card.objects.all()                           # Base queryset
+    serializer_class = CardSerializer                       # Serialization class
+    permission_classes = [permissions.IsAuthenticated]     # Authentication required
 
     def get_queryset(self):
-        """Return Cards ordered by position within their column"""
+        """
+        OPTIMIZED QUERY ORDERING
+        Return Cards ordered by position within their column, then by creation date
+        This ensures consistent UI display order
+        """
         return Card.objects.all().order_by('position', '-created_at')
     
     def perform_create(self, serializer):
-        """Automatically set the card creator to current user"""
+        """
+        CUSTOM CREATE BEHAVIOR
+        Override default create to automatically set the card creator
+        
+        WHY OVERRIDE?
+        - Ensures every card has an audit trail (who created it)
+        - Prevents users from impersonating others
+        - Centralizes this logic (works regardless of how card is created)
+        
+        DJANGO PATTERN: perform_* methods modify save behavior
+        """
         serializer.save(created_by=self.request.user)
 
-    # creates endpoint for /api/cards/5/vote/ with the only method: POST
-    @action(detail=True, methods=['post'])  
-    def vote(self, request, pk=None):  
-        """Vote on a card - creates new vote (allows multiple votes per user)"""
+    # VOTING ACTION - Complex Business Logic
+    # ========================================
+    @action(detail=True, methods=['post'])  # Creates: POST /api/cards/{id}/vote/
+    def vote(self, request, pk=None):
+        """
+        CARD VOTING SYSTEM
+        
+        COMPLEX BUSINESS RULES:
+        1. Users can vote multiple times on same card
+        2. Maximum 5 votes per user per board (not per card)
+        3. Must validate vote limits before creating vote
+        4. Provide detailed feedback on remaining votes
+        
+        ERROR HANDLING:
+        - Clear error messages for vote limit exceeded
+        - Graceful handling of validation failures
+        - Detailed success responses with updated counts
+        """
         card = self.get_object()
         
-        # Check if user can vote on this board
+        # BUSINESS RULE VALIDATION: Vote Limit Check
+        # ============================================
+        # Check BEFORE creating vote to prevent unnecessary database operations
         if not request.user.can_vote_on_board(card.column.retro_board):
             remaining = request.user.get_remaining_board_votes(card.column.retro_board)
             return Response({
                 'error': f'You have reached the maximum of 5 votes for this board. Remaining votes: {remaining}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # VOTE CREATION PROCESS
+        # =======================
+        # Prepare data for VoteSerializer validation
         vote_data = {'card': card.id}
         vote_serializer = VoteSerializer(data=vote_data, context={'request': request})
+        
         if vote_serializer.is_valid():
-            vote_serializer.save()
+            vote_serializer.save()  # VoteSerializer handles user assignment
+            
+            # REAL-TIME FEEDBACK
+            # ====================
+            # Calculate updated counts for immediate UI feedback
             remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
             return Response({
                 'message': 'Vote added',
-                'remaining_votes': remaining_votes,
-                'total_card_votes': card.vote_count,
-                'user_votes_on_card': card.votes.filter(user=request.user).count()
+                'remaining_votes': remaining_votes,                          # User's remaining votes
+                'total_card_votes': card.vote_count,                        # Total votes on this card
+                'user_votes_on_card': card.votes.filter(user=request.user).count()  # User's votes on this card
             }, status=status.HTTP_201_CREATED)
+        
+        # VALIDATION ERROR HANDLING
+        # ===========================
         return Response(vote_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+    # VOTE REMOVAL ACTION - LIFO Pattern
+    # =====================================
     @action(detail=True, methods=['delete'], url_path='vote')
     def remove_vote(self, request, pk=None):
-        """Remove one vote from a card (removes most recent vote if multiple)"""
+        """
+        VOTE REMOVAL WITH LIFO (Last In, First Out)
+        
+        BUSINESS RULES:
+        - Users can remove their own votes only
+        - Removes most recent vote if user voted multiple times
+        - LIFO pattern prevents gaming the system
+        - Updates vote counts in real-time
+        
+        URL PATTERN: DELETE /api/cards/{id}/vote/
+        
+        WHY LIFO?
+        - Prevents users from strategically removing specific votes
+        - Simpler logic than choosing which vote to remove
+        - Mirrors natural "undo last action" user expectation
+        
+        ERROR HANDLING:
+        - No votes found: 404 with clear message
+        - Database errors: 500 with error details
+        - Success: 200 with updated vote counts
+        """
         card = self.get_object()
+        
         try:
+            # VOTE SELECTION
+            # ======================
             # Get the most recent vote from this user on this card
+            # order_by('-created_at').first() = newest vote
             vote = card.votes.filter(user=request.user).order_by('-created_at').first()
+            
+            # BUSINESS VALIDATION
+            # =====================
             if not vote:
                 return Response({
                     'error': 'No vote found to remove'
                 }, status=status.HTTP_404_NOT_FOUND)
             
+            # VOTE DELETION
+            # ================
             vote.delete()
+            
+            # REAL-TIME FEEDBACK
+            # ====================
+            # Calculate updated counts for immediate UI feedback
             remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
             user_votes_on_card = card.votes.filter(user=request.user).count()
             
             return Response({
                 'message': 'Vote removed',
-                'remaining_votes': remaining_votes,
-                'total_card_votes': card.vote_count,
-                'user_votes_on_card': user_votes_on_card
+                'remaining_votes': remaining_votes,        # User's remaining vote allowance
+                'total_card_votes': card.vote_count,       # Total votes on this card
+                'user_votes_on_card': user_votes_on_card   # User's votes on this specific card
             }, status=status.HTTP_200_OK)
+            
         except Exception as e:
+            # UNEXPECTED ERROR HANDLING
+            # ===========================
+            # Catch and log unexpected database/system errors
             return Response({
                 'error': f'Error removing vote: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    # STATE TRANSITION ACTION: Card Movement
+    # =========================================
     @action(detail=True, methods=['patch'])
     def move_to_column(self, request, pk=None):
-        """Move card from pool to column or between columns"""
+        """
+        🎯 CARD STATE MANAGEMENT & DRAG-DROP SUPPORT
+        
+        STATE TRANSITIONS:
+        - draft → placed: Moving from card pool to column
+        - placed → placed: Moving between columns
+        - placed → draft: Moving back to pool
+        
+        BUSINESS LOGIC:
+        - Cards maintain retro_board association always
+        - column=None indicates card is in pool (draft status)
+        - position determines order within column
+        
+        FRONTEND INTEGRATION:
+        - Supports drag & drop UI interactions
+        - Real-time position updates
+        - Smooth state transitions
+        
+        URL PATTERN: PATCH /api/cards/{id}/move-to-column/
+        PAYLOAD: {'column_id': 5, 'position': 2}
+        """
         card = self.get_object()
         column_id = request.data.get('column_id')
-        position = request.data.get('position', 0)
+        position = request.data.get('position', 0)  # Default to top position
         
+        # STATE TRANSITION LOGIC
+        # ========================
         if column_id:
+            # MOVING TO COLUMN
+            # ==================
+            # Place card in specific column (draft → placed)
             column = Column.objects.get(id=column_id)
             card.column = column
-            card.retro_board = column.retro_board  # Ensure retro_board is set
-            card.status = 'placed'
+            card.retro_board = column.retro_board  # Ensure board consistency
+            card.status = 'placed'                  # Update status
         else:
+            # MOVING TO POOL
+            # ================
+            # Return card to pool (placed → draft)
             card.column = None
             card.status = 'draft'
-            # Keep retro_board when moving back to pool
+            # Keep retro_board association when moving back to pool
         
+        # POSITION UPDATE
+        # ==================
+        # Update display order within column/pool
         card.position = position
         card.save()
+        
+        # UPDATED RESPONSE
+        # ==================
+        # Return updated card data with new state
         return Response(CardSerializer(card, context={'request': request}).data)
     
+# VOTE MANAGEMENT - Audit Trail ViewSet
+# ========================================
 class VoteViewSet(viewsets.ModelViewSet):
     """
-    Viewset for managing votes
-    Provides: list, create, retrieve, update, destroy
-    Creates endpoints: GET, POST, PUT, DELETE for /api/votes/
+    VOTE TRACKING & AUDIT VIEWSET
+    
+    PURPOSE:
+    - Direct vote management (usually not needed by frontend)
+    - Administrative access to voting data
+    - Audit trail for voting behavior
+    - Bulk operations if needed
+    
+    BUSINESS NOTE:
+    - Most voting happens through CardViewSet.vote() action
+    - This ViewSet provides lower-level access
+    - Useful for analytics and administration
+    
+    ENDPOINTS PROVIDED:
+    - GET /api/votes/ → All votes (admin view)
+    - POST /api/votes/ → Direct vote creation
+    - GET /api/votes/{id}/ → Specific vote details
+    - DELETE /api/votes/{id}/ → Direct vote removal
+    
+    SECURITY CONSIDERATION:
+    - Users should only access their own votes
+    - Consider adding permission filtering
     """
 
-    queryset = Vote.objects.all() # queries Vote model
-    serializer_class = VoteSerializer # convert between Python and JSON
-    permission_classes = [permissions.IsAuthenticated] # Authentication enabled!
+    queryset = Vote.objects.all()                          # Base queryset
+    serializer_class = VoteSerializer                      # Vote serialization
+    permission_classes = [permissions.IsAuthenticated]    # Auth required
 
-    # overrides default ordering
     def get_queryset(self):
-        """Return votes ordered by creation date - newest first"""
+        """
+        CHRONOLOGICAL ORDERING
+        
+        WHY NEWEST FIRST?
+        - Shows recent voting activity
+        - Useful for audit trails
+        - Matches user expectation for activity feeds
+        
+        POTENTIAL ENHANCEMENTS:
+        - Filter by user: ?user=123
+        - Filter by board: ?board=456
+        - Filter by date range: ?from_date=2024-01-01
+        """
         return Vote.objects.all().order_by('-created_at')
     
     def perform_create(self, serializer):
-        """Automatically set the voter to current user"""
+        """
+        AUTOMATIC USER ASSIGNMENT
+        
+        SECURITY PATTERN:
+        - Always use authenticated user as voter
+        - Prevents vote impersonation
+        - Maintains audit trail integrity
+        
+        DJANGO PATTERN:
+        - perform_create() runs before save()
+        - Allows modification of save behavior
+        - Common pattern for setting user fields
+        """
         serializer.save(user=self.request.user)
 
+# COMMENT MANAGEMENT - Discussion ViewSet
+# ==========================================
 class CommentViewSet(viewsets.ModelViewSet):
     """
-    Viewset for managing votes
-    Provides: list, create, retrieve, update, destroy
-    Creates endpoints: GET, POST, PUT, DELETE for /api/comments/
+    COMMENT SYSTEM VIEWSET
+    
+    PURPOSE:
+    - Manages discussion/comments on retro cards
+    - Enables team conversation and clarification
+    - Provides threaded discussion capability
+    
+    BUSINESS VALUE:
+    - Teams can discuss card content
+    - Clarify ambiguous feedback
+    - Add context to retro items
+    - Build on each other's ideas
+    
+    ENDPOINTS PROVIDED:
+    - GET /api/comments/ → All comments
+    - POST /api/comments/ → Add new comment
+    - GET /api/comments/{id}/ → Specific comment
+    - PUT /api/comments/{id}/ → Edit comment
+    - DELETE /api/comments/{id}/ → Remove comment
+    
+    ORDERING STRATEGY:
+    - Oldest first for natural conversation flow
+    - Matches chat/discussion expectations
+    - Different from votes (newest first)
     """
 
-    queryset = Comment.objects.all() # queries Comment model
-    serializer_class = CommentSerializer # convert between Python and JSON
-    permission_classes = [permissions.IsAuthenticated] # Authentication enabled!
+    queryset = Comment.objects.all()                       # Base queryset
+    serializer_class = CommentSerializer                   # Comment serialization  
+    permission_classes = [permissions.IsAuthenticated]    # Auth required
 
     def get_queryset(self):
-        """Return comments ordered by creatio date - oldest first"""
-        return Comment.objects.all().order_by('created_at')
+        """
+        CONVERSATION FLOW ORDERING
+        
+        WHY OLDEST FIRST?
+        - Natural conversation chronology
+        - Users read comments in order they were posted
+        - Makes follow-up comments make sense in context
+        
+        CONTRAST WITH VOTES:
+        - Votes ordered newest first (activity feed style)
+        - Comments ordered oldest first (conversation style)
+        - Different UI patterns require different ordering
+        
+        FUTURE ENHANCEMENTS:
+        - Threading/reply support
+        - Filter by card: ?card=123
+        - Pagination for long discussions
+        """
+        return Comment.objects.all().order_by('created_at')  # Chronological order
     
     def perform_create(self, serializer):
-        """Automatically set the commenter to current user"""
+        """
+        AUTOMATIC AUTHORSHIP ASSIGNMENT
+        
+        SECURITY & AUDIT:
+        - Always use authenticated user as comment author
+        - Prevents comment impersonation
+        - Maintains discussion integrity
+        
+        BUSINESS LOGIC:
+        - Comments are tied to specific users
+        - Enables proper attribution in discussions
+        - Supports moderation if needed
+        
+        DJANGO PATTERN:
+        - perform_create() runs before save()
+        - Standard pattern for user field assignment
+        - Consistent with VoteViewSet approach
+        """
         serializer.save(user=self.request.user)
