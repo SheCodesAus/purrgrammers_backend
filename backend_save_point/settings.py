@@ -67,7 +67,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # - Never commit real secret keys to version control
 SECRET_KEY = os.environ.get(
     'DJANGO_SECRET_KEY',  # Production: from environment variable
-    'django-insecure-y1k1^ktl@(e73e#2_v(@&%cio$c^tj(tdaftp%$=e7bmwmjv75'  # Development fallback
+    'your_secret_key'  # Recommended that we do not hard code it in -- security issue
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!

@@ -118,8 +118,8 @@ class Card(models.Model):
     def __str__(self):
         if self.column:
             return f"{self.column.title}: {self.content[:50]}..."
-        return f"Pool card: {self.content[:50]}..." # For cards in pool without column
-    
+        return f"Pool card: {self.content[:50]}..." # For cards in pool without column TODO: Emma delete?
+
     # helper for calculating vote counts without having to call a method. Always accurate and up to date
     @property
     def vote_count(self):
