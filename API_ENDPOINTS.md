@@ -13,9 +13,31 @@ This document provides a comprehensive list of all API endpoints for the Purrgra
 
 | Method | Endpoint | Description | Request Body | Response | Auth Required |
 |--------|----------|-------------|--------------|----------|---------------|
-| `POST` | `/api/users/register/` | Register a new user | `{ "username": "string", "email": "string", "first_name": "string", "last_name": "string", "display_name": "string", "password": "string", "password_confirm": "string" }` | `{ "user": {...}, "token": "string", "message": "string" }` | ❌ |
+| `POST` | `/api/users/register/` | Register a new user | `{ "username": "string", "email": "string", "first_name": "string", "last_name": "string", "password": "string", "password_confirm": "string" }` | `{ "user": {...}, "token": "string", "message": "string" }` | ❌ |
 | `POST` | `/api/users/login/` | Login with email or username | `{ "username": "string", "password": "string" }` | `{ "token": "string", "user": {...} }` | ❌ |
-| `POST` | `/api/token/` | Alternative token endpoint | `{ "username": "string", "password": "string" }` | `{ "token": "string" }` | ❌ |
+| `GET` | `/api/users/me/` | Get current user data (with profile and teams) | - | `{ "id": int, "username": "string", "first_name": "string", "last_name": "string", "initials": "string", "created_at": "datetime", "profile": {...}, "teams": [...] }` | ✅ |
+| `GET` | `/api/users/profile/` | Get current user's profile | - | `{ "bio": "string", "location": "string", "created_at": "datetime", "updated_at": "datetime" }` | ✅ |
+| `PUT` | `/api/users/profile/` | Update current user's profile | `{ "bio": "string", "location": "string" }` | `{ "user": {...}, "message": "string" }` | ✅ |
+| `PATCH` | `/api/users/profile/` | Partially update current user's profile | `{ "bio": "string" }` or `{ "location": "string" }` | `{ "user": {...}, "message": "string" }` | ✅ |
+
+---
+
+## Teams Endpoints
+
+| Method | Endpoint | Description | Request Body | Response | Auth Required |
+|--------|----------|-------------|--------------|----------|---------------|
+| `GET` | `/api/teams/` | List all active teams | - | `[{ "id": int, "name": "string", "description": "string", "created_by": {...}, "created_at": "datetime", "member_count": int }]` | ✅ |
+| `POST` | `/api/teams/` | Create a new team | `{ "name": "string", "description": "string" }` | `{ "id": int, "name": "string", "description": "string", "created_by": {...}, "created_at": "datetime", "updated_at": "datetime", "is_active": true, "memberships": [], "members": [], "member_count": 0 }` | ✅ |
+| `GET` | `/api/teams/{id}/` | Get specific team details | - | `{ "id": int, "name": "string", "description": "string", "created_by": {...}, "created_at": "datetime", "updated_at": "datetime", "is_active": boolean, "memberships": [...], "members": [...], "member_count": int }` | ✅ |
+| `PUT` | `/api/teams/{id}/` | Update a team | `{ "name": "string", "description": "string", "is_active": boolean }` | `{ "id": int, "name": "string", "description": "string", "created_by": {...}, "updated_at": "datetime", "is_active": boolean, "memberships": [...], "members": [...], "member_count": int }` | ✅ |
+| `DELETE` | `/api/teams/{id}/` | Delete a team | - | - | ✅ |
+| `GET` | `/api/teams/my-teams/` | Get teams current user is a member of | - | `[{ "id": int, "name": "string", "description": "string", "created_by": {...}, "created_at": "datetime", "member_count": int }]` | ✅ |
+| `POST` | `/api/teams/{id}/add-member/` | Add member to team | `{ "user_id": int }` | `{ "message": "string", "membership": {...} }` | ✅ |
+| `DELETE` | `/api/teams/{id}/remove-member/{user_id}/` | Remove member from team | - | `{ "message": "string" }` | ✅ |
+| `GET` | `/api/teams/{id}/members/` | Get all team members with membership details | - | `[{ "id": int, "user": {...}, "joined_at": "datetime", "added_by": {...} }]` | ✅ |
+| `GET` | `/api/teams/{id}/retro-boards/` | Get retro boards assigned to team | - | `[{ "id": int, "title": "string", "description": "string", "created_by": {...}, "created_at": "datetime" }]` | ✅ |
+| `POST` | `/api/teams/{id}/assign-board/` | Assign retro board to team | `{ "board_id": int }` | `{ "message": "string" }` | ✅ |
+| `DELETE` | `/api/teams/{id}/unassign-board/{board_id}/` | Remove board assignment from team | - | `{ "message": "string" }` | ✅ |
 
 ---
 
@@ -122,9 +144,22 @@ Content-Type: application/json
   "username": "string",
   "first_name": "string", 
   "last_name": "string",
-  "display_name": "string",
   "initials": "string",
-  "created_at": "datetime"
+  "created_at": "datetime",
+  "profile": {
+    "bio": "string",
+    "location": "string", 
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  },
+  "teams": [
+    {
+      "id": 1,
+      "name": "string",
+      "description": "string",
+      "created_at": "datetime"
+    }
+  ]
 }
 ```
 

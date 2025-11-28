@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
-from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer
+from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer, UserProfileSerializer
+from .models import UserProfile
 
 User = get_user_model()
 
@@ -60,3 +61,34 @@ class CustomAuthToken(ObtainAuthToken):
             'token': token.key,
             'user': user_serializer.data
         })
+
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    """Get or update the current user's profile"""
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        """Get the profile for the authenticated user"""
+        profile, created = UserProfile.objects.get_or_create(user=self.request.user)
+        return profile
+
+    def update(self, request, *args, **kwargs):
+        """Update profile and return updated user data"""
+        response = super().update(request, *args, **kwargs)
+        
+        # Return full user data including updated profile
+        user_serializer = CustomUserSerializer(request.user)
+        return Response({
+            'user': user_serializer.data,
+            'message': 'Profile updated successfully'
+        })
+
+
+class CurrentUserView(generics.RetrieveAPIView):
+    """Get current user's full data (including profile and teams)"""
+    serializer_class = CustomUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
