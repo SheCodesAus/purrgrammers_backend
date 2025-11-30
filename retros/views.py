@@ -22,6 +22,7 @@ from .serializers import (
     VoteSerializer,
     CommentSerializer
 )
+from django.db import models, transaction  # For atomic database operations
 
 # SECURITY NOTE: Dynamic User Model
 # ===================================
@@ -440,32 +441,54 @@ class CardViewSet(viewsets.ModelViewSet):
         
         # STATE TRANSITION LOGIC
         # ========================
-        if column_id:
-            # MOVING TO COLUMN
+        try:
+            with transaction.atomic():
+                if column_id:
+                    # MOVING TO COLUMN
+                    # ==================
+                    # Place card in specific column (draft → placed)
+                    column = Column.objects.get(id=column_id)
+                    
+                    # Shift cards at target position and betond
+                    Card.objects.filter(
+                        column=column,
+                        position__gte=position
+                    ).exclude(id=card.id).update(
+                        position=models.F('position') + 1
+                    )
+                    card.column = column
+                    card.retro_board = column.retro_board  # Ensure board consistency
+                    card.status = 'placed'        
+                          # Update status
+
+                else:
+                    # MOVING TO POOL
+                    # ================
+                    # Return card to pool (placed → draft)
+                    card.column = None
+                    card.status = 'draft'
+                    # Keep retro_board association when moving back to pool
+        
+                # POSITION UPDATE
+                # ==================
+                # Update display order within column/pool
+                card.position = position
+                card.save(update_fields=['column', 'retro_board', 'status', 'position'])
+        
+            # UPDATED RESPONSE
             # ==================
-            # Place card in specific column (draft → placed)
-            column = Column.objects.get(id=column_id)
-            card.column = column
-            card.retro_board = column.retro_board  # Ensure board consistency
-            card.status = 'placed'                  # Update status
-        else:
-            # MOVING TO POOL
-            # ================
-            # Return card to pool (placed → draft)
-            card.column = None
-            card.status = 'draft'
-            # Keep retro_board association when moving back to pool
+            # Return updated card data with new state
+            return Response(
+            CardSerializer(card, context={'request': request}).data,
+            status=status.HTTP_200_OK)
+        except Exception as e:
+            # ERROR HANDLING
+            # ==================
+            return Response({
+                'error': f'Error moving card: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # POSITION UPDATE
-        # ==================
-        # Update display order within column/pool
-        card.position = position
-        card.save()
-        
-        # UPDATED RESPONSE
-        # ==================
-        # Return updated card data with new state
-        return Response(CardSerializer(card, context={'request': request}).data)
+
     
 # VOTE MANAGEMENT - Audit Trail ViewSet
 # ========================================
