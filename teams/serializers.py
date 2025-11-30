@@ -140,12 +140,13 @@ class TeamSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """
-        Override create to automatically set team creator
+        Override create to automatically set team creator and add them as a member
         
         WHY OVERRIDE CREATE?
         - created_by field should be set automatically from authenticated user
         - Security: prevent users from impersonating other team creators
         - UX: users don't need to specify themselves as creator
+        - Auto-add creator as first team member
         
         CONTEXT ACCESS:
         - self.context['request']: access to HTTP request object
@@ -161,12 +162,22 @@ class TeamSerializer(serializers.ModelSerializer):
             validated_data (dict): Clean data from validation
         
         Returns:
-            Team: Created team instance with current user as creator
+            Team: Created team instance with current user as creator and member
         """
+        user = self.context['request'].user
         # Set team creator to current authenticated user
-        validated_data['created_by'] = self.context['request'].user
+        validated_data['created_by'] = user
         # Call parent create method with modified data
-        return super().create(validated_data)
+        team = super().create(validated_data)
+        
+        # Automatically add creator as first team member
+        TeamMembership.objects.create(
+            team=team,
+            user=user,
+            added_by=user  # They added themselves
+        )
+        
+        return team
 
 class TeamMembershipCreateSerializer(serializers.ModelSerializer):
     """
