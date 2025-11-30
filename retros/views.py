@@ -1,6 +1,5 @@
 # RETROS VIEWS - Complex ViewSet Patterns & Custom Actions
-# =========================================================
-# This file demonstrates advanced DRF patterns:
+
 # - ModelViewSet for full CRUD operations
 # - Custom @action decorators for business-specific endpoints
 # - Permission handling and authentication
@@ -22,15 +21,33 @@ from .serializers import (
     VoteSerializer,
     CommentSerializer
 )
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
-# SECURITY NOTE: Dynamic User Model
-# ===================================
+def broadcast_to_board(board_id, event_type, data):
+    """
+    Broadcast even to all websocket connections viewing the board
+
+    Args:
+    board_id: the id of the board
+    event_type: 'card_created', 'card_updated', 'card_deleted', 'card_moved'
+    data: dictionary of data to send
+    """
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f'board_{board_id}',
+        {
+            'type': event_type,
+            'data': data
+        }
+    )
+
 # get_user_model() returns the active user model (could be custom)
 # This is more flexible than importing a specific User model
 User = get_user_model()
 
 # RETRO BOARD MANAGEMENT - Main ViewSet
-# =======================================
+
 class RetroBoardViewSet(viewsets.ModelViewSet):
     """
     MAIN BOARD MANAGEMENT VIEWSET
@@ -68,7 +85,7 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         return RetroBoard.objects.filter(is_active=True).order_by('-created_at')
     
     # CUSTOM ACTION: Get Board Columns
-    # ==================================
+    
     @action(detail=True, methods=['get'])  # Creates: GET /api/retro-boards/{id}/columns/
     def columns(self, request, pk=None):
         """
@@ -88,7 +105,7 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     # CUSTOM ACTION: Voting Summary
-    # ===============================
+    
     @action(detail=True, methods=['get'])  # Creates: GET /api/retro-boards/{id}/vote_summary/
     def vote_summary(self, request, pk=None):
         """
@@ -105,28 +122,24 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         user = request.user
         
         # SECURITY CHECK: Authentication Required
-        # =========================================
-        # Even though permission_classes handles this globally,
-        # being explicit in voting logic is good practice
+        
         if not user.is_authenticated:
             return Response({
                 'error': 'Authentication required'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
         # BUSINESS LOGIC: Vote Counting
-        # ===============================
-        # Use model methods to encapsulate complex vote counting logic
+        
         return Response({
             'board_id': board.id,
             'board_title': board.title,
-            'max_votes_per_user': 5,                                    # Business rule
-            'user_total_votes': board.get_user_vote_count(user),       # Model method
-            'user_remaining_votes': board.get_user_remaining_votes(user), # Model method
-            'can_vote_more': user.can_vote_on_board(board)             # User method
+            'max_votes_per_user': 5,                                    
+            'user_total_votes': board.get_user_vote_count(user),       
+            'user_remaining_votes': board.get_user_remaining_votes(user), 
+            'can_vote_more': user.can_vote_on_board(board)             
         })
     
     # CUSTOM ACTION: Card Pool Management
-    # ===================================== 
     @action(detail=True, methods=['get'])
     def card_pool(self, request, pk=None):
         """
@@ -146,12 +159,7 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         """
         board = self.get_object()
         
-        # BUSINESS RULE QUERY
-        # ======================
-        # Find all cards that are:
-        # 1. Draft status (not yet placed)
-        # 2. Not assigned to a column
-        # 3. Belong to this retro board
+        
         draft_cards = Card.objects.filter(
             retro_board=board,
             status='draft',
@@ -207,8 +215,8 @@ class ColumnViewSet(viewsets.ModelViewSet):
         """
         return Column.objects.all().order_by('position')
     
-    # 🃏 RELATIONSHIP ACTION: Get Column Cards
-    # ======================================
+    # RELATIONSHIP ACTION: Get Column Cards
+  
     @action(detail=True, methods=['get'])
     def cards(self, request, pk=None):
         """
@@ -234,18 +242,18 @@ class ColumnViewSet(viewsets.ModelViewSet):
         column = self.get_object()
         
         # REVERSE RELATIONSHIP ACCESS
-        # =============================
+        
         # Access cards through ForeignKey reverse relationship
         cards = column.cards.all()  # Uses related_name from Card.column field
         
         # CONTEXT FOR USER-SPECIFIC DATA
-        # =================================
+        
         # Pass request context for voting information
         serializer = CardSerializer(cards, many=True, context={'request': request})
         return Response(serializer.data)
     
-# CARD MANAGEMENT - Complex Business Logic ViewSet  
-# =================================================
+# CARD MANAGEMENT - Logic ViewSet  
+
 class CardViewSet(viewsets.ModelViewSet):
     """
     CARD MANAGEMENT WITH VOTING SYSTEM
@@ -277,21 +285,43 @@ class CardViewSet(viewsets.ModelViewSet):
         return Card.objects.all().order_by('position', '-created_at')
     
     def perform_create(self, serializer):
-        """
-        CUSTOM CREATE BEHAVIOR
-        Override default create to automatically set the card creator
-        
-        WHY OVERRIDE?
-        - Ensures every card has an audit trail (who created it)
-        - Prevents users from impersonating others
-        - Centralizes this logic (works regardless of how card is created)
-        
-        DJANGO PATTERN: perform_* methods modify save behavior
-        """
-        serializer.save(created_by=self.request.user)
+        card = serializer.save(created_by=self.request.user)
+
+        # broadcast to all users viewing board
+        if card.retro_board:
+            broadcast_to_board(
+                card.retro_board.id,
+                'card_created',
+                CardSerializer(card).data
+            )
+
+    def perform_update(self, serializer):
+        card = serializer.save()
+
+        # broadcast to all users viewing board
+        if card.retro_board:
+            broadcast_to_board(
+                card.retro_board.id,
+                'card_updated',
+                CardSerializer(card).data
+            )
+
+    def perform_destroy(self, instance):
+        board_id = instance.retro_board.id if instance.retro_board else None
+        card_id = instance.id
+
+        instance.delete()
+
+        # broadcast to all users viewing board
+        if board_id:
+            broadcast_to_board(
+                board_id,
+                'card_deleted',
+                {'id': card_id}
+            )
 
     # VOTING ACTION - Complex Business Logic
-    # ========================================
+    
     @action(detail=True, methods=['post'])  # Creates: POST /api/cards/{id}/vote/
     def vote(self, request, pk=None):
         """
@@ -372,24 +402,23 @@ class CardViewSet(viewsets.ModelViewSet):
         
         try:
             # VOTE SELECTION
-            # ======================
+            
             # Get the most recent vote from this user on this card
             # order_by('-created_at').first() = newest vote
             vote = card.votes.filter(user=request.user).order_by('-created_at').first()
             
-            # BUSINESS VALIDATION
-            # =====================
+            
             if not vote:
                 return Response({
                     'error': 'No vote found to remove'
                 }, status=status.HTTP_404_NOT_FOUND)
             
             # VOTE DELETION
-            # ================
+            
             vote.delete()
             
             # REAL-TIME FEEDBACK
-            # ====================
+            
             # Calculate updated counts for immediate UI feedback
             remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
             user_votes_on_card = card.votes.filter(user=request.user).count()
@@ -403,18 +432,18 @@ class CardViewSet(viewsets.ModelViewSet):
             
         except Exception as e:
             # UNEXPECTED ERROR HANDLING
-            # ===========================
+            
             # Catch and log unexpected database/system errors
             return Response({
                 'error': f'Error removing vote: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     # STATE TRANSITION ACTION: Card Movement
-    # =========================================
+    
     @action(detail=True, methods=['patch'])
     def move_to_column(self, request, pk=None):
         """
-        🎯 CARD STATE MANAGEMENT & DRAG-DROP SUPPORT
+        CARD STATE MANAGEMENT & DRAG-DROP SUPPORT
         
         STATE TRANSITIONS:
         - draft → placed: Moving from card pool to column
@@ -439,10 +468,10 @@ class CardViewSet(viewsets.ModelViewSet):
         position = request.data.get('position', 0)  # Default to top position
         
         # STATE TRANSITION LOGIC
-        # ========================
+        
         if column_id:
             # MOVING TO COLUMN
-            # ==================
+            
             # Place card in specific column (draft → placed)
             column = Column.objects.get(id=column_id)
             card.column = column
@@ -450,14 +479,14 @@ class CardViewSet(viewsets.ModelViewSet):
             card.status = 'placed'                  # Update status
         else:
             # MOVING TO POOL
-            # ================
+            
             # Return card to pool (placed → draft)
             card.column = None
             card.status = 'draft'
             # Keep retro_board association when moving back to pool
         
         # POSITION UPDATE
-        # ==================
+        
         # Update display order within column/pool
         card.position = position
         card.save()
@@ -468,7 +497,7 @@ class CardViewSet(viewsets.ModelViewSet):
         return Response(CardSerializer(card, context={'request': request}).data)
     
 # VOTE MANAGEMENT - Audit Trail ViewSet
-# ========================================
+
 class VoteViewSet(viewsets.ModelViewSet):
     """
     VOTE TRACKING & AUDIT VIEWSET
@@ -532,7 +561,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 # COMMENT MANAGEMENT - Discussion ViewSet
-# ==========================================
+
 class CommentViewSet(viewsets.ModelViewSet):
     """
     COMMENT SYSTEM VIEWSET
