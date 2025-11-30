@@ -86,7 +86,7 @@ class Column(models.Model):
     
     class Meta:
         ordering = ['position'] # returns columns in position order: 0, 1, 2, 3 ...
-        unique_together = ['retro_board', 'position'] # stops different columns from having the same positions
+        # unique_together = ['column', 'position'] # stops different columns from having the same positions
 
 class Card(models.Model):
     """
@@ -99,7 +99,7 @@ class Card(models.Model):
     retro_board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name='all_cards', null=True, blank=True)
     content = models.TextField(blank=True)
     # Who created this card (no null=True means card must have an owner)
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_boards')
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_cards')
     # auto_now_add = sets timestamp once on creation, auto_now = updates on every save
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -130,7 +130,11 @@ class Card(models.Model):
     class Meta:
         ordering = ['position', 'created_at']
         # Ensures no two cards have same position in same column
-        unique_together = ['column', 'position']
+        # unique_together = ['column', 'position']
+        indexes = [
+                models.Index(fields=['column', 'position']),
+                models.Index(fields=['retro_board', 'status']),
+        ]
 
 class Vote(models.Model):
     """
