@@ -1,0 +1,48 @@
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+class BoardConsumer(AsyncWebsocketConsumer):
+    """
+    Websocket consumer for real time board updates
+    Each board has its own 'room' so only users viewing the board get updates
+    """
+
+    async def connect(self):
+        """Called when a websocket connection is opened"""
+        self.board_id = self.scope['url_route']['kwargs']['board_id']
+        self.room_group_name = f'board_{self.board_id}'
+
+        # join the room group
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        """Called when websocket is closed"""
+        # leave the room group
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+
+    async def receive(self, text_data):
+        """Called when a message is received from websocket"""
+
+        pass
+
+    # event handlers - called when views broadcast events
+    async def card_created(self, event):
+        """Send card created event to websocket"""
+        await self.send(text_data=json.dumps(event))
+
+    async def card_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def card_deleted(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def card_moved(self, event):
+        await self.send(text_data=json.dumps(event))

@@ -253,7 +253,8 @@ class TeamViewSet(viewsets.ModelViewSet):
         
         try:
             board = RetroBoard.objects.get(id=board_id)
-            board.assigned_teams.add(team)
+            board.team = team
+            board.save()
             return Response({
                 'message': f'Board "{board.title}" assigned to team "{team.name}"'
             }, status=status.HTTP_200_OK)
@@ -274,10 +275,17 @@ class TeamViewSet(viewsets.ModelViewSet):
         
         try:
             board = RetroBoard.objects.get(id=board_id)
-            board.assigned_teams.remove(team)
-            return Response({
-                'message': f'Board "{board.title}" unassigned from team "{team.name}"'
-            }, status=status.HTTP_200_OK)
+            if board.team == team:
+                board.team = None
+                board.save()
+                return Response({
+                    'message': f'Board "{board.title}" unassigned from team "{team.name}"'
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {'error': 'Board is not assigned to this team'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
         except RetroBoard.DoesNotExist:
             return Response(

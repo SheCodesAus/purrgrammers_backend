@@ -13,14 +13,13 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     user_vote_count = serializers.SerializerMethodField()
     user_remaining_votes = serializers.SerializerMethodField()
     max_votes_per_user = serializers.SerializerMethodField()
-    assigned_teams = serializers.SerializerMethodField()
-    team_count = serializers.SerializerMethodField()
+    team = serializers.SerializerMethodField()
     columns = serializers.SerializerMethodField()
     
     class Meta:
         model = RetroBoard
         # All fields that will be included in API responses
-        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'assigned_teams', 'team_count', 'columns']
+        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'team', 'columns']
         # Fields that can't be modified via API (timestamps, auto-generated IDs)
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -49,15 +48,13 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         """Retrun the max votes allowed per user (5)"""
         return 5  # Business rule: 5 votes per user per board
     
-    def get_assigned_teams(self, obj):
-        """Get basic info about assigned teams"""
-        # Import here to avoid circular imports (both files importing each other)
-        from teams.serializers import TeamListSerializer
-        return TeamListSerializer(obj.assigned_teams.all(), many=True).data
-    
-    def get_team_count(self, obj):
-        """Return number of teams assigned to this board"""
-        return obj.assigned_teams.count()
+    def get_team(self, obj):
+        """Get basic info about assigned team"""
+        if obj.team:
+            # Import here to avoid circular imports (both files importing each other)
+            from teams.serializers import TeamListSerializer
+            return TeamListSerializer(obj.team).data
+        return None
     
     def get_columns(self, obj):
         """Get all columns for this board"""
