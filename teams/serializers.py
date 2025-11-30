@@ -179,33 +179,32 @@ class TeamMembershipCreateSerializer(serializers.ModelSerializer):
     
     DESIGN PATTERN: Write-Only Serializer
     - Only used for creating memberships
-    - Uses IDs instead of full objects for efficiency
+    - Uses username for user-friendly input
     - Focused validation for specific use case
     
     VALIDATION LAYERS:
-    1. Field validation: user_id and team_id exist
+    1. Field validation: username and team_id exist
     2. Cross-field validation: prevent duplicate memberships
     3. Permission validation: handled in view
     """
     
-    # WRITE-ONLY ID FIELDS:
-    # Frontend sends user ID and team ID
-    # More efficient than sending full objects
+    # WRITE-ONLY FIELDS:
+    # Frontend sends username and team ID
     # write_only=True: these fields never appear in responses
-    user_id = serializers.IntegerField(write_only=True)
+    username = serializers.CharField(write_only=True)
     team_id = serializers.IntegerField(write_only=True)
 
     class Meta:
         model = TeamMembership
         # MINIMAL FIELDS:
-        # Only include the ID fields needed for creation
+        # Only include the fields needed for creation
         # Actual User and Team objects are resolved in validation
-        fields = ['user_id', 'team_id']
+        fields = ['username', 'team_id']
 
 
-    def validate_user_id(self, value):
+    def validate_username(self, value):
         """
-        Validate that user exists
+        Validate that user exists by username
         
         FIELD-LEVEL VALIDATION:
         - Called automatically by DRF during is_valid()
@@ -214,22 +213,21 @@ class TeamMembershipCreateSerializer(serializers.ModelSerializer):
         
         BUSINESS LOGIC:
         - User must exist in database
-        - User must be active (could add this check)
         - Clear error message for API consumers
         
         Args:
-            value (int): User ID from request
+            value (str): Username from request
         
         Returns:
-            int: Validated user ID
+            str: Validated username
         
         Raises:
             ValidationError: If user doesn't exist
         """
         try:
-            User.objects.get(id=value)
+            User.objects.get(username=value)
         except User.DoesNotExist:
-            raise serializers.ValidationError("User does not exist")
+            raise serializers.ValidationError("User not found")
         return value
     
     def validate_team_id(self, value):
@@ -283,10 +281,13 @@ class TeamMembershipCreateSerializer(serializers.ModelSerializer):
         Raises:
             ValidationError: If user already in team
         """
+        # Look up user by username
+        user = User.objects.get(username=data['username'])
+        
         # Check for existing membership
         if TeamMembership.objects.filter(
             team_id=data['team_id'],
-            user_id=data['user_id']
+            user=user
         ).exists():
             raise serializers.ValidationError("User is already a member of this team")
         return data
@@ -297,7 +298,7 @@ class TeamMembershipCreateSerializer(serializers.ModelSerializer):
         
         CUSTOM CREATION LOGIC:
         1. Set added_by to current user (audit trail)
-        2. Convert IDs to actual model instances
+        2. Convert username to User instance
         3. Create membership with all metadata
         
         AUDIT TRAIL:
@@ -305,13 +306,8 @@ class TeamMembershipCreateSerializer(serializers.ModelSerializer):
         - joined_at: automatically set by model
         - Supports accountability and membership history
         
-        ID TO OBJECT CONVERSION:
-        - Pop IDs from validated_data
-        - Get actual User and Team objects
-        - Create membership with object references
-        
         Args:
-            validated_data (dict): Clean data with user_id and team_id
+            validated_data (dict): Clean data with username and team_id
         
         Returns:
             TeamMembership: Created membership instance
@@ -319,9 +315,8 @@ class TeamMembershipCreateSerializer(serializers.ModelSerializer):
         # Set audit information
         validated_data['added_by'] = self.context['request'].user
         
-        # Convert IDs to model instances
-        # pop() removes and returns the value
-        user = User.objects.get(id=validated_data.pop('user_id'))
+        # Convert username to User instance
+        user = User.objects.get(username=validated_data.pop('username'))
         team = Team.objects.get(id=validated_data.pop('team_id'))
 
         # Create membership with full objects and audit data
