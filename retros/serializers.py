@@ -14,19 +14,36 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     user_remaining_votes = serializers.SerializerMethodField()
     max_votes_per_user = serializers.SerializerMethodField()
     team = serializers.SerializerMethodField()
+    team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)  # for POST/PUT - accepts team id
     columns = serializers.SerializerMethodField()
     
     class Meta:
         model = RetroBoard
         # All fields that will be included in API responses
-        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'team', 'columns']
+        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'team', 'team_id', 'columns']
         # Fields that can't be modified via API (timestamps, auto-generated IDs)
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def create(self, validated_data):
         # Override create to automatically set created_by to current user
         validated_data['created_by_id'] = self.context['request'].user.id
+        # Handle team_id -> team conversion
+        team_id = validated_data.pop('team_id', None)
+        if team_id:
+            from teams.models import Team
+            validated_data['team'] = Team.objects.get(id=team_id)
         return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        # Handle team_id -> team conversion for updates
+        team_id = validated_data.pop('team_id', None)
+        if team_id is not None:
+            if team_id:
+                from teams.models import Team
+                validated_data['team'] = Team.objects.get(id=team_id)
+            else:
+                validated_data['team'] = None
+        return super().update(instance, validated_data)
     
     def get_user_vote_count(self, obj):
         """Get current user's total votes on board"""
