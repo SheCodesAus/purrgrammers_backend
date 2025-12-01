@@ -320,123 +320,87 @@ class CardViewSet(viewsets.ModelViewSet):
                 {'id': card_id}
             )
 
-    # VOTING ACTION - Complex Business Logic
+    # VOTING ACTION - Handles both POST (add vote) and DELETE (remove vote)
+    # =====================================================================
     
-    @action(detail=True, methods=['post'])  # Creates: POST /api/cards/{id}/vote/
+    @action(detail=True, methods=['post', 'delete'])  # POST/DELETE /api/cards/{id}/vote/
     def vote(self, request, pk=None):
         """
         CARD VOTING SYSTEM
         
-        COMPLEX BUSINESS RULES:
-        1. Users can vote multiple times on same card
-        2. Maximum 5 votes per user per board (not per card)
-        3. Must validate vote limits before creating vote
-        4. Provide detailed feedback on remaining votes
+        POST - Add a vote:
+        - Users can vote multiple times on same card
+        - Maximum 5 votes per user per board (not per card)
+        - Validates vote limits before creating vote
         
-        ERROR HANDLING:
-        - Clear error messages for vote limit exceeded
-        - Graceful handling of validation failures
-        - Detailed success responses with updated counts
-        """
-        card = self.get_object()
-        
-        # BUSINESS RULE VALIDATION: Vote Limit Check
-        # ============================================
-        # Check BEFORE creating vote to prevent unnecessary database operations
-        if not request.user.can_vote_on_board(card.column.retro_board):
-            remaining = request.user.get_remaining_board_votes(card.column.retro_board)
-            return Response({
-                'error': f'You have reached the maximum of 5 votes for this board. Remaining votes: {remaining}'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # VOTE CREATION PROCESS
-        # =======================
-        # Prepare data for VoteSerializer validation
-        vote_data = {'card': card.id}
-        vote_serializer = VoteSerializer(data=vote_data, context={'request': request})
-        
-        if vote_serializer.is_valid():
-            vote_serializer.save()  # VoteSerializer handles user assignment
-            
-            # REAL-TIME FEEDBACK
-            # ====================
-            # Calculate updated counts for immediate UI feedback
-            remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
-            return Response({
-                'message': 'Vote added',
-                'remaining_votes': remaining_votes,                          # User's remaining votes
-                'total_card_votes': card.vote_count,                        # Total votes on this card
-                'user_votes_on_card': card.votes.filter(user=request.user).count()  # User's votes on this card
-            }, status=status.HTTP_201_CREATED)
-        
-        # VALIDATION ERROR HANDLING
-        # ===========================
-        return Response(vote_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    # VOTE REMOVAL ACTION - LIFO Pattern
-    # =====================================
-    @action(detail=True, methods=['delete'], url_path='vote')
-    def remove_vote(self, request, pk=None):
-        """
-        VOTE REMOVAL WITH LIFO (Last In, First Out)
-        
-        BUSINESS RULES:
+        DELETE - Remove a vote (LIFO pattern):
         - Users can remove their own votes only
         - Removes most recent vote if user voted multiple times
-        - LIFO pattern prevents gaming the system
-        - Updates vote counts in real-time
-        
-        URL PATTERN: DELETE /api/cards/{id}/vote/
-        
-        WHY LIFO?
-        - Prevents users from strategically removing specific votes
-        - Simpler logic than choosing which vote to remove
-        - Mirrors natural "undo last action" user expectation
-        
-        ERROR HANDLING:
-        - No votes found: 404 with clear message
-        - Database errors: 500 with error details
-        - Success: 200 with updated vote counts
+        - LIFO prevents gaming the system
         """
         card = self.get_object()
         
-        try:
-            # VOTE SELECTION
+        if request.method == 'POST':
+            # ADD VOTE
+            # =========
             
-            # Get the most recent vote from this user on this card
-            # order_by('-created_at').first() = newest vote
-            vote = card.votes.filter(user=request.user).order_by('-created_at').first()
-            
-            
-            if not vote:
+            #  Vote Limit Check
+            if not request.user.can_vote_on_board(card.column.retro_board):
+                remaining = request.user.get_remaining_board_votes(card.column.retro_board)
                 return Response({
-                    'error': 'No vote found to remove'
-                }, status=status.HTTP_404_NOT_FOUND)
+                    'error': f'You have reached the maximum of 5 votes for this board. Remaining votes: {remaining}'
+                }, status=status.HTTP_400_BAD_REQUEST)
             
-            # VOTE DELETION
+            # VOTE CREATION PROCESS
+            vote_data = {'card': card.id}
+            vote_serializer = VoteSerializer(data=vote_data, context={'request': request})
             
-            vote.delete()
+            if vote_serializer.is_valid():
+                vote_serializer.save()  # VoteSerializer handles user assignment
+                
+                # REAL-TIME FEEDBACK
+                remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
+                return Response({
+                    'message': 'Vote added',
+                    'remaining_votes': remaining_votes,
+                    'total_card_votes': card.vote_count,
+                    'user_votes_on_card': card.votes.filter(user=request.user).count()
+                }, status=status.HTTP_201_CREATED)
             
-            # REAL-TIME FEEDBACK
+            return Response(vote_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif request.method == 'DELETE':
+            # REMOVE VOTE (LIFO - Last In, First Out)
+            # ========================================
             
-            # Calculate updated counts for immediate UI feedback
-            remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
-            user_votes_on_card = card.votes.filter(user=request.user).count()
+            try:
+                # Get the most recent vote from this user on this card
+                vote = card.votes.filter(user=request.user).order_by('-created_at').first()
+                
+                if not vote:
+                    return Response({
+                        'error': 'No vote found to remove'
+                    }, status=status.HTTP_404_NOT_FOUND)
+                
+                # VOTE DELETION
+                vote.delete()
+                
+                # REAL-TIME FEEDBACK
+                remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
+                user_votes_on_card = card.votes.filter(user=request.user).count()
+                
+                return Response({
+                    'message': 'Vote removed',
+                    'remaining_votes': remaining_votes,
+                    'total_card_votes': card.vote_count,
+                    'user_votes_on_card': user_votes_on_card
+                }, status=status.HTTP_200_OK)
             
-            return Response({
-                'message': 'Vote removed',
-                'remaining_votes': remaining_votes,        # User's remaining vote allowance
-                'total_card_votes': card.vote_count,       # Total votes on this card
-                'user_votes_on_card': user_votes_on_card   # User's votes on this specific card
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            # UNEXPECTED ERROR HANDLING
-            
-            # Catch and log unexpected database/system errors
-            return Response({
-                'error': f'Error removing vote: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                # UNEXPECTED ERROR HANDLING
+                return Response({
+                    'error': f'Error removing vote: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     # STATE TRANSITION ACTION: Card Movement
     
