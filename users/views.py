@@ -205,6 +205,33 @@ class CustomAuthToken(ObtainAuthToken):
             'user': user_serializer.data  # Complete user data (profile, teams, etc.)
         })
 
+class PublicUserProfileView(APIView):
+    """
+    View any user's profile (read-only)
+    
+    ENDPOINT: GET /api/users/profile/{user_id}/
+    
+    PURPOSE:
+    - Allow logged-in users to view other users' profiles
+    - Read-only access (no PATCH/PUT)
+    - Useful for team member info, card author details, etc.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, user_id):
+        """Get a specific user's profile by user_id"""
+        try:
+            user = CustomUser.objects.get(id=user_id)
+            profile, created = UserProfile.objects.get_or_create(user=user)
+            serializer = UserProfileSerializer(profile)
+            return Response(serializer.data)
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'error': 'User not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
 class UserProfileView(APIView):
     """
     User profile management endpoint - handles GET and PATCH requests

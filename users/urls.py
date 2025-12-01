@@ -45,6 +45,12 @@ urlpatterns = [
     # GET Response: {bio: "...", location: "...", created_at: "...", teams: [...]}
     # PATCH Body: {bio: "...", location: "..."} (partial updates allowed)
     path('profile/', views.UserProfileView.as_view(), name='user_profile'),
+    
+    # PUBLIC PROFILE: GET /api/users/profile/{user_id}/
+    # View any user's profile (read-only)
+    # Permission: IsAuthenticated (must be logged in)
+    # Response: {bio: "...", location: "...", created_at: "...", teams: [...]}
+    path('profile/<int:user_id>/', views.PublicUserProfileView.as_view(), name='public_user_profile'),
 ]
 
 # URL NAMING CONVENTIONS:
