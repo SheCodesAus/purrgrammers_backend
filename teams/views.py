@@ -77,19 +77,11 @@ class TeamViewSet(viewsets.ModelViewSet):
         - prefetch_related(): Separate queries for ManyToMany (members, memberships)
         - Reduces database queries from N+1 to 2-3 queries total
         
-        CONDITIONAL FILTERING:
-        - Query parameters allow API consumers to filter results
-        - ?my_teams=true returns only teams user belongs to
-        - Flexible API design without separate endpoints
+        SECURITY:
+        - Only returns teams where the current user is a member
+        - Prevents users from seeing teams they don't belong to
         """
-        queryset = Team.objects.filter(is_active=True)
-        
-        # CONDITIONAL FILTERING
-        # ======================
-        # Allow filtering by user's team membership via query param
-        # Usage: GET /api/teams/?my_teams=true
-        if self.request.query_params.get('my_teams'):
-            queryset = queryset.filter(members=self.request.user)
+        queryset = Team.objects.filter(is_active=True, members=self.request.user)
         
         # PERFORMANCE OPTIMIZATION
         # =========================
