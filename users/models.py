@@ -209,6 +209,10 @@ class UserProfile(models.Model):
     # blank=True: optional field
     location = models.CharField(max_length=100, blank=True)
     
+    # CharField: job role/title
+    # blank=True: optional field
+    job_role = models.CharField(max_length=100, blank=True)
+    
     # Timestamp fields for audit trail
     # auto_now_add=True: set once on creation
     # auto_now=True: update every time model is saved

@@ -56,7 +56,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         
         # fields: specify which model fields to include in API
         # These become JSON keys in API responses
-        fields = ['user_id', 'username', 'first_name', 'last_name', 'initials', 'bio', 'location', 'created_at', 'updated_at']
+        fields = ['user_id', 'username', 'first_name', 'last_name', 'initials', 'bio', 'location', 'job_role', 'created_at', 'updated_at']
         
         # read_only_fields: can be read but not written via API
         # Protects timestamp fields from being manually set
@@ -381,7 +381,7 @@ class UserProfileWithTeamsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = ['user_id', 'username', 'first_name', 'last_name', 'initials', 'bio', 'location', 'created_at', 'updated_at', 'teams']
+        fields = ['user_id', 'username', 'first_name', 'last_name', 'initials', 'bio', 'location', 'job_role', 'created_at', 'updated_at', 'teams']
         read_only_fields = ['created_at', 'updated_at', 'teams']
 
     def get_teams(self, obj):
