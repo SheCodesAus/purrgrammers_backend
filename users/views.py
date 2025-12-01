@@ -221,11 +221,11 @@ class PublicUserProfileView(APIView):
     def get(self, request, user_id):
         """Get a specific user's profile by user_id"""
         try:
-            user = CustomUser.objects.get(id=user_id)
+            user = User.objects.get(id=user_id)
             profile, created = UserProfile.objects.get_or_create(user=user)
             serializer = UserProfileWithTeamsSerializer(profile)
             return Response(serializer.data)
-        except CustomUser.DoesNotExist:
+        except User.DoesNotExist:
             return Response(
                 {'error': 'User not found'}, 
                 status=status.HTTP_404_NOT_FOUND
