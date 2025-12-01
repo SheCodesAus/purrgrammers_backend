@@ -82,7 +82,10 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         PERFORMANCE NOTE: This runs for every request
         Consider adding select_related/prefetch_related for optimization
         """
-        return RetroBoard.objects.filter(is_active=True).order_by('-created_at')
+        user = self.request.user
+        return RetroBoard.objects.filter(
+            team__members=user  # returns only boards that user is a member of
+        ).distinct().order_by('-created_at')
     
     # CUSTOM ACTION: Get Board Columns
     
