@@ -177,7 +177,9 @@ DATABASES = {
     }
 }
 
-db_from_env = dj_database_url.config(conn_max_age=500)
+# conn_max_age=0 closes connections after each request (safer for limited connections)
+# Heroku Essential-0 only allows 20 connections
+db_from_env = dj_database_url.config(conn_max_age=0)
 DATABASES['default'].update(db_from_env)
 
 
