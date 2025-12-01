@@ -359,49 +359,36 @@ class EmailOrUsernameLoginSerializer(serializers.Serializer):
                 code='authorization'
             )
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserProfileWithTeamsSerializer(serializers.ModelSerializer):
     """
-    Enhanced UserProfile serializer with team information for profile pages
+    Enhanced UserProfile serializer with user info and team information
     
-    NOTE: This is a second UserProfileSerializer (name collision)
-    - First one (above) is basic profile data
-    - This one includes team information for profile pages
-    - Consider renaming to UserProfileWithTeamsSerializer for clarity
-    
-    DESIGN PATTERN: Different serializers for different use cases
-    - List views: minimal data for performance
-    - Detail views: complete data for full functionality
-    - Update views: only editable fields
+    Includes:
+    - User fields (id, username, initials, etc.)
+    - Profile fields (bio, location)
+    - Team information for profile pages
     """
+    
+    # Include user fields for convenience (read-only)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    initials = serializers.CharField(source='user.initials', read_only=True)
     
     # SerializerMethodField for complex team data
-    # This makes an additional database query - consider performance implications
     teams = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
-        # Include team information in profile response
-        fields = ['bio', 'location', 'created_at', 'updated_at', 'teams']
-        # Teams are read-only (managed via separate team endpoints)
+        fields = ['user_id', 'username', 'first_name', 'last_name', 'initials', 'bio', 'location', 'created_at', 'updated_at', 'teams']
         read_only_fields = ['created_at', 'updated_at', 'teams']
 
     def get_teams(self, obj):
         """
         Get team information for user's profile page
         
-        PERFORMANCE OPTIMIZATION:
-        - Use values() for dictionary output instead of model instances
-        - Only include needed fields (id, name, description)
-        - Faster than full model serialization
-        
-        ORM OPTIMIZATION:
-        - obj.user.teams: traverse OneToOne relationship to User, then ManyToMany to teams
-        - filter(is_active=True): only show active teams
-        - values(): returns dictionaries instead of model instances (faster)
-        
         Returns:
             list: List of team dictionaries with basic team info
         """
-        # Get active teams for the profile's user
-        # values() returns list of dictionaries (more efficient than model instances)
         return obj.user.teams.filter(is_active=True).values('id', 'name', 'description')

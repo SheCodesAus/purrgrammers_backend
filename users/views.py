@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 # Django authentication imports
 from django.contrib.auth import get_user_model
 # Our custom serializers and models
-from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer, UserProfileSerializer
+from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer, UserProfileSerializer, UserProfileWithTeamsSerializer
 from .models import UserProfile
 
 # DJANGO REST FRAMEWORK CONCEPTS:
@@ -223,7 +223,7 @@ class PublicUserProfileView(APIView):
         try:
             user = CustomUser.objects.get(id=user_id)
             profile, created = UserProfile.objects.get_or_create(user=user)
-            serializer = UserProfileSerializer(profile)
+            serializer = UserProfileWithTeamsSerializer(profile)
             return Response(serializer.data)
         except CustomUser.DoesNotExist:
             return Response(
@@ -284,7 +284,7 @@ class UserProfileView(APIView):
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         
         # Serialize profile data for JSON response
-        serializer = UserProfileSerializer(profile)
+        serializer = UserProfileWithTeamsSerializer(profile)
         return Response(serializer.data)
     
     def patch(self, request):
