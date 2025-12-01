@@ -33,8 +33,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
     API USAGE:
     - GET: return profile data to frontend
     - PUT/PATCH: update profile information
-    - Excludes user field (handled by authentication)
+    - Includes user info (id, username, initials) for convenience
     """
+    
+    # Include user fields for convenience (read-only)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    initials = serializers.CharField(source='user.initials', read_only=True)
     
     class Meta:
         """
@@ -49,7 +56,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         
         # fields: specify which model fields to include in API
         # These become JSON keys in API responses
-        fields = ['bio', 'location', 'created_at', 'updated_at']
+        fields = ['user_id', 'username', 'first_name', 'last_name', 'initials', 'bio', 'location', 'created_at', 'updated_at']
         
         # read_only_fields: can be read but not written via API
         # Protects timestamp fields from being manually set
