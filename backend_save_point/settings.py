@@ -99,6 +99,12 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",           # For local development
 ]
 
+# CSRF_TRUSTED_ORIGINS: domains trusted for CSRF protection (needed for admin panel)
+CSRF_TRUSTED_ORIGINS = [
+    "https://savepoint.herokuapp.com",
+    "https://*.herokuapp.com",
+]
+
 
 # Application definition
 
