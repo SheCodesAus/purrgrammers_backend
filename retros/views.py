@@ -357,6 +357,14 @@ class CardViewSet(viewsets.ModelViewSet):
             if vote_serializer.is_valid():
                 vote_serializer.save()  # VoteSerializer handles user assignment
                 
+                # Broadcast vote to all users viewing the board
+                board_id = card.column.retro_board.id
+                broadcast_to_board(board_id, 'vote_added', {
+                    'card_id': card.id,
+                    'total_card_votes': card.vote_count,
+                    'user_id': request.user.id
+                })
+                
                 # REAL-TIME FEEDBACK
                 remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
                 return Response({
@@ -383,6 +391,14 @@ class CardViewSet(viewsets.ModelViewSet):
                 
                 # VOTE DELETION
                 vote.delete()
+                
+                # Broadcast vote removal to all users viewing the board
+                board_id = card.column.retro_board.id
+                broadcast_to_board(board_id, 'vote_removed', {
+                    'card_id': card.id,
+                    'total_card_votes': card.vote_count,
+                    'user_id': request.user.id
+                })
                 
                 # REAL-TIME FEEDBACK
                 remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)

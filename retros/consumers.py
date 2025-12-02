@@ -55,3 +55,12 @@ class BoardConsumer(AsyncWebsocketConsumer):
 
     async def action_item_deleted(self, event):
         await self.send(text_data=json.dumps(event))
+
+    # Vote event handlers
+    async def vote_added(self, event):
+        """Send vote added event to websocket"""
+        await self.send(text_data=json.dumps(event))
+
+    async def vote_removed(self, event):
+        """Send vote removed event to websocket"""
+        await self.send(text_data=json.dumps(event))
