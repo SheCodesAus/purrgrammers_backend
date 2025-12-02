@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from users.serializers import CustomUserSerializer
-from .models import RetroBoard, Column, Card, Vote, Comment
+from django.contrib.auth import get_user_model
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem
+
+User = get_user_model()
 
 class RetroBoardSerializer(serializers.ModelSerializer):
     """
@@ -211,3 +214,64 @@ class CommentSerializer(serializers.ModelSerializer):
         # automatically set user to current user
         validated_data['user_id'] = self.context['request'].user.id
         return super().create(validated_data)
+    
+class ActionItemSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ActionItem that handles action bar items with status tracking (todo, in_progress, completed)
+    Read: returns full user objects for created_by and assignee
+    Write: Accepts usernames with lookup for assignment
+    """
+
+    # GET - returns full user info - username, initials, avatar
+    created_by = CustomUserSerializer(read_only=True)
+    assignee = CustomUserSerializer(read_only=True)
+
+    # PATCH - accepts a username as a string to assign user to action item
+    assignee_username = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+
+    # include original column for return to column function
+    original_column_id = serializers.IntegerField(source='original_column.id', read_only=True)
+    original_column_title = serializers.CharField(source='original_column.title', read_only=True)
+
+    class Meta:
+        model = ActionItem
+        fields = [
+            'id',
+            'retro_board',
+            'content',
+            'status',
+            'original_column_id',
+            'original_column_title',
+            'created_by',
+            'assignee',
+            'assignee_username', # write only: assigning by username
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = [
+            'id',
+            'retro_board',
+            'content',
+            'original_column_id',
+            'original_column_title',
+            'created_by',
+            'created_at',
+            'updated_at'
+        ]
+
+    def update(self, instance, validated_data):
+        """Handle assignee_username -> assignee lookup"""
+        assignee_username = validated_data.pop('assignee_username', None)
+
+        if assignee_username is not None:
+            if assignee_username:
+                try:
+                    instance.assignee = User.objects.get(username=assignee_username)
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({
+                        'assignee_username': f"User '{assignee_username}' not found"
+                    })
+            else:
+                instance.assignee = None
+        
+        return super().update(instance, validated_data)
