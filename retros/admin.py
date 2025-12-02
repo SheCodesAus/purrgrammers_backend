@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import RetroBoard, Column, Card, Vote, Comment
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem
 
 @admin.register(RetroBoard)
 class RetroBoardAdmin(admin.ModelAdmin):
@@ -68,3 +68,18 @@ class CommentAdmin(admin.ModelAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user', 'card', 'card__column')
+
+@admin.register(ActionItem)
+class ActionItemAdmin(admin.ModelAdmin):
+    list_display = ('content_preview', 'retro_board', 'status', 'created_by', 'assignee', 'created_at')
+    list_filter = ('status', 'created_at', 'retro_board')
+    search_fields = ('content', 'retro_board__title', 'created_by__username', 'assignee__username')
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('-created_at',)
+    
+    def content_preview(self, obj):
+        return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
+    content_preview.short_description = 'Content'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('retro_board', 'created_by', 'assignee', 'original_column')
