@@ -258,51 +258,60 @@ class CommentSerializer(serializers.ModelSerializer):
     
 class ActionItemSerializer(serializers.ModelSerializer):
     """
-    Serializer for ActionItem that handles action bar items with status tracking (todo, in_progress, completed)
+    Serializer for ActionItem with status tracking (todo, in_progress, completed)
     Read: returns full user objects for created_by and assignee
-    Write: Accepts usernames with lookup for assignment
+    Write: Accepts retro_board_id and content for creation, username for assignment
     """
 
     # GET - returns full user info - username, initials, avatar
     created_by = CustomUserSerializer(read_only=True)
     assignee = CustomUserSerializer(read_only=True)
 
+    # POST - accepts board ID to create action item
+    retro_board_id = serializers.IntegerField(write_only=True, required=False)
+
     # PATCH - accepts a username as a string to assign user to action item
     assignee_username = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
-
-    # include original column for return to column function
-    original_column_id = serializers.IntegerField(source='original_column.id', read_only=True)
-    original_column_title = serializers.CharField(source='original_column.title', read_only=True)
 
     class Meta:
         model = ActionItem
         fields = [
             'id',
             'retro_board',
+            'retro_board_id',  # write only: for creating action items
             'content',
             'status',
-            'original_column_id',
-            'original_column_title',
             'created_by',
             'assignee',
-            'assignee_username', # write only: assigning by username
+            'assignee_username',  # write only: assigning by username
             'created_at',
             'updated_at'
         ]
         read_only_fields = [
             'id',
             'retro_board',
-            'content',
-            'original_column_id',
-            'original_column_title',
             'created_by',
             'created_at',
             'updated_at'
         ]
 
+    def create(self, validated_data):
+        """Create action item with current user as creator"""
+        # Handle retro_board_id -> retro_board conversion
+        retro_board_id = validated_data.pop('retro_board_id', None)
+        if retro_board_id:
+            validated_data['retro_board_id'] = retro_board_id
+        
+        # Set created_by to current user
+        validated_data['created_by'] = self.context['request'].user
+        
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
         """Handle assignee_username -> assignee lookup"""
         assignee_username = validated_data.pop('assignee_username', None)
+        # Remove retro_board_id if passed (shouldn't change after creation)
+        validated_data.pop('retro_board_id', None)
 
         if assignee_username is not None:
             if assignee_username:

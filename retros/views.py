@@ -473,39 +473,6 @@ class CardViewSet(viewsets.ModelViewSet):
         # Return updated card data with new state
         return Response(CardSerializer(card, context={'request': request}).data)
     
-    @action(detail=True, methods=['post'])
-    def convert_to_action(self, request, pk=None):
-        """
-        Convert Card to Action Item
-
-        Single operation that:
-        1. creates new ActionItem with the card's content
-        2. deletes the original card
-        3. broadcasts both events via websocket for real-time updates
-
-        URL: POST /api/cards/{id}/convert-to-action/
-        Body: {} - empty as we are pulling all data from the card
-        """
-        card = self.get_object()
-        board_id = card.retro_board.id if card.retro_board else card.column.retro_board.id
-
-        # create action item from card data
-        action_item = ActionItem.objects.create(
-            retro_board_id=board_id,
-            content=card.content,
-            original_column=card.column,
-            created_by=request.user
-        )
-
-        card_id = card.id
-        card.delete()
-
-        # broadcast both events via websocket
-        broadcast_to_board(board_id, 'card_deleted', {'id': card_id})
-        broadcast_to_board(board_id, 'action_item_created', ActionItemSerializer(action_item).data)
-
-        return Response(ActionItemSerializer(action_item).data, status=status.HTTP_201_CREATED)
-    
 # VOTE MANAGEMENT - Audit Trail ViewSet
 
 class VoteViewSet(viewsets.ModelViewSet):
@@ -652,10 +619,10 @@ class ActionItemViewSet(viewsets.ModelViewSet):
     
     Endpoints:
     - GET    /api/action-items/           → List all (filtered by board)
+    - POST   /api/action-items/           → Create new action item
     - GET    /api/action-items/{id}/      → Get specific action item
     - PATCH  /api/action-items/{id}/      → Update status/assignee
     - DELETE /api/action-items/{id}/      → Delete action item
-    - POST   /api/action-items/{id}/return-to-column/ → Return to original column
     """
     
     queryset = ActionItem.objects.all()
@@ -670,6 +637,15 @@ class ActionItemViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(retro_board_id=board_id)
         return queryset
     
+    def perform_create(self, serializer):
+        """Create action item and broadcast via WebSocket"""
+        action_item = serializer.save()
+        broadcast_to_board(
+            action_item.retro_board.id,
+            'action_item_created',
+            ActionItemSerializer(action_item).data
+        )
+    
     def perform_update(self, serializer):
         action_item = serializer.save()
         broadcast_to_board(
@@ -683,42 +659,3 @@ class ActionItemViewSet(viewsets.ModelViewSet):
         action_item_id = instance.id
         instance.delete()
         broadcast_to_board(board_id, 'action_item_deleted', {'id': action_item_id})
-    
-    @action(detail=True, methods=['post'])
-    def return_to_column(self, request, pk=None):
-        """
-        RETURN ACTION ITEM TO ORIGINAL COLUMN
-        
-        Single transaction that:
-        1. Creates new Card in original column
-        2. Deletes the ActionItem
-        3. Broadcasts both events
-        
-        URL: POST /api/action-items/{id}/return-to-column/
-        """
-        action_item = self.get_object()
-        
-        if not action_item.original_column:
-            return Response(
-                {'error': 'No original column stored - cannot return to column'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Create card in original column
-        card = Card.objects.create(
-            column=action_item.original_column,
-            retro_board=action_item.retro_board,
-            content=action_item.content,
-            created_by=request.user,
-            status='placed'
-        )
-        
-        board_id = action_item.retro_board.id
-        action_item_id = action_item.id
-        action_item.delete()
-        
-        # Broadcast both events
-        broadcast_to_board(board_id, 'action_item_deleted', {'id': action_item_id})
-        broadcast_to_board(board_id, 'card_created', CardSerializer(card).data)
-        
-        return Response(CardSerializer(card).data, status=status.HTTP_201_CREATED)

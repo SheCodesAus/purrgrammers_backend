@@ -165,17 +165,17 @@ class Comment(models.Model):
 
 class ActionItem(models.Model):
     """
-    Action items extracted from retro cards for tracking of tasks
+    Action items for tracking tasks from retro boards
 
     Separate model instead of adding optional fields to card model
-    - Exists independantly after retro ends and board is closed - also much cleaner than adding to card model
-    - has its own status workflow: todo -> in_progress -> completed
-    - can be assigned to team members
+    - Exists independently after retro ends and board is closed
+    - Has its own status workflow: todo -> in_progress -> completed
+    - Can be assigned to team members
 
     User flow:
-    1. User drags card from column to action bar -> card deleted, ActionItem created
-    2. User updates status
-    3. I have built in a feature for "return to column" -> ActionItem deleted, Card recreated in original_column
+    1. User creates action item from the board page
+    2. User updates status as work progresses
+    3. User can assign to team members for accountability
     """
 
     STATUS_CHOICES = [
@@ -191,7 +191,7 @@ class ActionItem(models.Model):
         related_name='action_items'
     )
 
-    # action item content copied from original card
+    # action item content
     content = models.TextField()
 
     # tracking progress with todo -> in progress -> completed
@@ -201,15 +201,7 @@ class ActionItem(models.Model):
         default='todo'
     )
 
-    # store original column for the return to column feature
-    original_column = models.ForeignKey(
-        Column,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
-    )
-
-    # who created item - user who dragged card
+    # who created the action item
     created_by = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
