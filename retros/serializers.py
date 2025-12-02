@@ -18,12 +18,29 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     max_votes_per_user = serializers.SerializerMethodField()
     team = serializers.SerializerMethodField()
     team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)  # for POST/PUT - accepts team id
-    columns = serializers.SerializerMethodField()
+    columns = serializers.SerializerMethodField() # columns
+    action_items = serializers.SerializerMethodField() # action items
     
     class Meta:
         model = RetroBoard
         # All fields that will be included in API responses
-        fields = ['id', 'title', 'description', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'is_active', 'user_vote_count', 'user_remaining_votes', 'max_votes_per_user', 'team', 'team_id', 'columns']
+        fields = [
+            'id',
+            'title',
+            'description',
+            'created_by',
+            'created_by_id',
+            'created_at',
+            'updated_at',
+            'is_active',
+            'user_vote_count',
+            'user_remaining_votes',
+            'max_votes_per_user',
+            'team',
+            'team_id',
+            'columns',
+            'action_items'
+            ]
         # Fields that can't be modified via API (timestamps, auto-generated IDs)
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -81,6 +98,11 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         # Order by position to maintain consistent column order
         columns = obj.columns.all().order_by('position')
         return ColumnSerializer(columns, many=True).data
+    
+    def get_action_items(self, obj):
+        """Get all action items for the board"""
+        action_items = obj.action_items.all().order_by('created_at')
+        return ActionItemSerializer(action_items, many=True).data
 
 class ColumnSerializer(serializers.ModelSerializer):
     """
