@@ -46,3 +46,12 @@ class BoardConsumer(AsyncWebsocketConsumer):
 
     async def card_moved(self, event):
         await self.send(text_data=json.dumps(event))
+
+    async def action_item_created(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def action_item_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def action_item_deleted(self, event):
+        await self.send(text_data=json.dumps(event))
