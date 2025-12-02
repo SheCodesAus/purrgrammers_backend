@@ -86,11 +86,30 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         return 5  # Business rule: 5 votes per user per board
     
     def get_team(self, obj):
-        """Get basic info about assigned team"""
+        """Get team info with members for assignee dropdown"""
         if obj.team:
-            # Import here to avoid circular imports (both files importing each other)
-            from teams.serializers import TeamListSerializer
-            return TeamListSerializer(obj.team).data
+            team = obj.team
+            # Get members with just the fields needed for assignee dropdown
+            members = team.members.all().values('id', 'username', 'first_name', 'last_name')
+            members_with_initials = []
+            for member in members:
+                initials = ''
+                if member['first_name'] and member['last_name']:
+                    initials = member['first_name'][0] + member['last_name'][0]
+                elif member['username']:
+                    initials = member['username'][:2].upper()
+                members_with_initials.append({
+                    'id': member['id'],
+                    'username': member['username'],
+                    'first_name': member['first_name'],
+                    'last_name': member['last_name'],
+                    'initials': initials
+                })
+            return {
+                'id': team.id,
+                'name': team.name,
+                'members': members_with_initials
+            }
         return None
     
     def get_columns(self, obj):
