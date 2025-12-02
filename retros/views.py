@@ -359,10 +359,9 @@ class CardViewSet(viewsets.ModelViewSet):
                 
                 # Broadcast vote to all users viewing the board
                 board_id = card.column.retro_board.id
-                broadcast_to_board(board_id, 'vote_added', {
-                    'card_id': card.id,
-                    'total_card_votes': card.vote_count,
-                    'user_id': request.user.id
+                broadcast_to_board(board_id, 'card_voted', {
+                    'id': card.id,
+                    'vote_count': card.vote_count
                 })
                 
                 # REAL-TIME FEEDBACK
@@ -394,10 +393,9 @@ class CardViewSet(viewsets.ModelViewSet):
                 
                 # Broadcast vote removal to all users viewing the board
                 board_id = card.column.retro_board.id
-                broadcast_to_board(board_id, 'vote_removed', {
-                    'card_id': card.id,
-                    'total_card_votes': card.vote_count,
-                    'user_id': request.user.id
+                broadcast_to_board(board_id, 'card_voted', {
+                    'id': card.id,
+                    'vote_count': card.vote_count
                 })
                 
                 # REAL-TIME FEEDBACK
