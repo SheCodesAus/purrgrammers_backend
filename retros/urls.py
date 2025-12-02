@@ -35,6 +35,7 @@ router.register(r'columns', views.ColumnViewSet)          # Column CRUD operatio
 router.register(r'cards', views.CardViewSet)              # Card management + voting
 router.register(r'votes', views.VoteViewSet)              # Vote tracking
 router.register(r'comments', views.CommentViewSet)        # Comment system
+router.register(r'action-items', views.ActionItemViewSet) # action item
 
 # URL INCLUSION
 # ===============
