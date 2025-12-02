@@ -162,3 +162,74 @@ class Comment(models.Model):
     
     class Meta:
         ordering = ['created_at'] # shows the comments in chronological order
+
+class ActionItem(models.Model):
+    """
+    Action items extracted from retro cards for tracking of tasks
+
+    Separate model instead of adding optional fields to card model
+    - Exists independantly after retro ends and board is closed - also much cleaner than adding to card model
+    - has its own status workflow: todo -> in_progress -> completed
+    - can be assigned to team members
+
+    User flow:
+    1. User drags card from column to action bar -> card deleted, ActionItem created
+    2. User updates status
+    3. I have built in a feature for "return to column" -> ActionItem deleted, Card recreated in original_column
+    """
+
+    STATUS_CHOICES = [
+        ('todo', 'To Do'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    ]
+
+    # which board this action belongs to:
+    retro_board = models.ForeignKey(
+        RetroBoard,
+        on_delete=models.CASCADE,
+        related_name='action_items'
+    )
+
+    # action item content copied from original card
+    content = models.TextField()
+
+    # tracking progress with todo -> in progress -> completed
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='todo'
+    )
+
+    # store original column for the return to column feature
+    original_column = models.ForeignKey(
+        Column,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    # who created item - user who dragged card
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='created_action_items'
+    )
+
+    # optional - assign to a team member for accountability - users can assign themselves
+    assignee = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,        # Database allows NULL
+        blank=True,       # Forms/API don't require it
+        related_name='assigned_action_items'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Action: {self.content[:50]}... ({self.status})" # slice prevents super long text, ... indicates text has been truncated
+    
+    class Meta:
+        ordering = ['created_at']

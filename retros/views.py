@@ -1,9 +1,9 @@
 # RETROS VIEWS - Complex ViewSet Patterns & Custom Actions
 
 # - ModelViewSet for full CRUD operations
-# - Custom @action decorators for business-specific endpoints
+# - Custom @action decorators for specific endpoints
 # - Permission handling and authentication
-# - Complex business logic (voting system)
+# - Complex logic (voting system)
 # - Error handling and user feedback
 # - Cross-model operations and relationships
 
@@ -42,7 +42,7 @@ def broadcast_to_board(board_id, event_type, data):
         }
     )
 
-# get_user_model() returns the active user model (could be custom)
+# get_user_model() returns the active user model
 # This is more flexible than importing a specific User model
 User = get_user_model()
 
@@ -60,13 +60,8 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
     - PATCH  /api/retro-boards/{id}/  -> partial_update() - partial update
     - DELETE /api/retro-boards/{id}/  -> destroy() - delete board
     
-    PLUS custom @action methods for business-specific operations
+    PLUS custom @action methods for specific operations
     
-    WHY MODELVIEWSET?
-    - Provides full CRUD automatically
-    - Can override methods for custom behavior
-    - Easy to add custom actions with @action decorator
-    - Follows REST conventions out of the box
     """
     
     queryset = RetroBoard.objects.all()           # Base query (modified by get_queryset)
@@ -602,3 +597,4 @@ class CommentViewSet(viewsets.ModelViewSet):
         - Consistent with VoteViewSet approach
         """
         serializer.save(user=self.request.user)
+
