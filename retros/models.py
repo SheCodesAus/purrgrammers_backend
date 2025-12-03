@@ -66,6 +66,7 @@ class Column(models.Model):
         ('continue', 'Continue'),
         ('custom', 'Custom'),  # Keeps flexibility for custom names
     ]
+    
 
     # ForeignKey = one board can have many columns
     retro_board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name='columns')
@@ -83,6 +84,44 @@ class Column(models.Model):
         ordering = ['position'] # returns columns in position order: 0, 1, 2, 3 ...
         unique_together = ['retro_board', 'position'] # stops different columns from having the same positions
 
+class Tag(models.Model):
+    """
+    Predefined tags for cards with a custom option if needed
+    """
+    TAG_CHOICES = [
+
+        # NOTE: these are easily changeable if we want different ones
+        # languages
+        ('python', 'Python'),
+        ('javascript', 'JavaScript'),
+        ('java', 'Java'),
+        ('csharp', 'C#'),
+        ('typescript', 'TypeScript'),
+
+        # frameworks
+        ('django', 'Django'),
+        ('nodejs', 'Node.js'),
+        ('react', 'React'),
+        ('angular', 'Angular'),
+
+        # other
+        ('tools', 'Tools'),
+        ('team_culture', 'Team Culture'),
+        ('workload', 'Workload'),
+        ('communication', 'Communication'),
+
+        # we don't have to implement this one, just adding it in case
+        ('custom', 'Custom'),
+    ]
+
+    name = models.CharField(max_length=50, choices=TAG_CHOICES, unique=True)
+    
+    def __str__(self):
+        return self.get_name_display()
+    
+    class Meta:
+        ordering = ['name']
+
 class Card(models.Model):
     """
     Individual feedback items - can be in a column or in the "pool" (draft state)
@@ -97,6 +136,7 @@ class Card(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     position = models.PositiveIntegerField(default=0)
     is_anonymous = models.BooleanField(default=False)
+    tags = models.ManyToManyField(Tag, blank=True, related_name='cards')
 
     # Card workflow: draft (in pool) -> placed (in column)
     STATUS_CHOICES = [
