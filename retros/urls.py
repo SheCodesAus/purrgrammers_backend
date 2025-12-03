@@ -36,6 +36,7 @@ router.register(r'cards', views.CardViewSet)              # Card management + vo
 router.register(r'votes', views.VoteViewSet)              # Vote tracking
 router.register(r'comments', views.CommentViewSet)        # Comment system
 router.register(r'action-items', views.ActionItemViewSet) # action item
+router.register(r'tags', views.TagViewSet)                # Tag list (read-only)
 
 # URL INCLUSION
 # ===============

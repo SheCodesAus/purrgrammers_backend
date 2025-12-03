@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag
 
 @admin.register(RetroBoard)
 class RetroBoardAdmin(admin.ModelAdmin):
@@ -83,3 +83,10 @@ class ActionItemAdmin(admin.ModelAdmin):
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('retro_board', 'created_by', 'assignee', 'original_column')
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ('name', 'get_name_display')
+    search_fields = ('name',)
+    ordering = ('name',)

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from users.serializers import CustomUserSerializer
 from django.contrib.auth import get_user_model
-from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag
 
 User = get_user_model()
 
@@ -123,6 +123,18 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         action_items = obj.action_items.all().order_by('created_at')
         return ActionItemSerializer(action_items, many=True).data
 
+class TagSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Tag - returns tag name and display label
+    """
+    display_name = serializers.CharField(source='get_name_display', read_only=True)
+
+    class Meta:
+        model = Tag
+        fields = ['id', 'name', 'display_name']
+        read_only_fields = ['id', 'name', 'display_name']
+
+
 class ColumnSerializer(serializers.ModelSerializer):
     """
     Serializer for Column - includes cards and card count for frontend convenience
@@ -162,10 +174,18 @@ class CardSerializer(serializers.ModelSerializer):
     user_vote_count = serializers.SerializerMethodField() # changed from has_user_voted
     user_board_votes_remaining = serializers.SerializerMethodField() # new field for voting logic update
     color = serializers.SerializerMethodField() # get color from column
+    tags = TagSerializer(many=True, read_only=True)  # for GET - returns full tag objects
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(), 
+        many=True, 
+        write_only=True, 
+        required=False,
+        source='tags'
+    )  # for POST/PATCH - accepts list of tag IDs
 
     class Meta:
         model = Card
-        fields = ['id', 'column', 'retro_board', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'status', 'vote_count', 'user_vote_count', 'user_board_votes_remaining', 'color']
+        fields = ['id', 'column', 'retro_board', 'content', 'created_by', 'created_by_id', 'created_at', 'updated_at', 'position', 'is_anonymous', 'status', 'vote_count', 'user_vote_count', 'user_board_votes_remaining', 'color', 'tags', 'tag_ids']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_color(self, obj):

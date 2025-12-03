@@ -13,14 +13,15 @@ from rest_framework import viewsets, permissions, status  # Core DRF classes
 from rest_framework.decorators import action             # Custom endpoint decorator
 from rest_framework.response import Response             # JSON response wrapper
 from django.contrib.auth import get_user_model          # Dynamic user model reference
-from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag
 from .serializers import (
     RetroBoardSerializer,
     ColumnSerializer,
     CardSerializer,
     VoteSerializer,
     CommentSerializer,
-    ActionItemSerializer
+    ActionItemSerializer,
+    TagSerializer
 )
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -658,4 +659,24 @@ class ActionItemViewSet(viewsets.ModelViewSet):
         board_id = instance.retro_board.id
         action_item_id = instance.id
         instance.delete()
-        broadcast_to_board(board_id, 'action_item_deleted', {'id': action_item_id})
+        broadcast_to_board(
+            board_id,
+            'action_item_deleted',
+            {'id': action_item_id}
+        )
+
+
+class TagViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only ViewSet for Tags
+    
+    Tags are predefined and seeded via migration.
+    Frontend can fetch all available tags to display in a dropdown/selector.
+    
+    Endpoints:
+    - GET /api/tags/        → List all available tags
+    - GET /api/tags/{id}/   → Get specific tag
+    """
+    queryset = Tag.objects.all()
+    serializer_class = TagSerializer
+    permission_classes = [permissions.IsAuthenticated]
