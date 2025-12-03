@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag, VotingRound
 
 @admin.register(RetroBoard)
 class RetroBoardAdmin(admin.ModelAdmin):
@@ -90,3 +90,11 @@ class TagAdmin(admin.ModelAdmin):
     list_display = ('name', 'get_name_display')
     search_fields = ('name',)
     ordering = ('name',)
+
+@admin.register(VotingRound)
+class VotingRoundAdmin(admin.ModelAdmin):
+    list_display = ('retro_board', 'round_number', 'is_active', 'created_at')
+    list_filter = ('is_active', 'retro_board')
+    search_fields = ('retro_board__title',)
+    readonly_fields = ('created_at',)
+    ordering = ('retro_board', '-round_number')

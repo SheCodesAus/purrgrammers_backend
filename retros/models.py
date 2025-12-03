@@ -18,6 +18,7 @@ class RetroBoard(models.Model):
     is_active = models.BooleanField(default=True)
     # One team per board; a team can have multiple boards
     team = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='retro_boards')
+    
 
     def __str__(self):
         
@@ -49,10 +50,56 @@ class RetroBoard(models.Model):
                 vote_count=Count('votes')
             ).order_by('-vote_count')[:5]  
         }
+    
+    def get_active_voting_round(self):
+        """
+        Get the current active voting round
+        Creates round 1 if no round exists yet
+        """
+
+        # try to get active round
+        active_round = self.voting_rounds.filter(is_active=True).first()
+
+        if active_round:
+            return active_round
+        
+        # if no active round - creates round one
+        # handles boards that were created before I implemented this feature
+        return VotingRound.objects.create(
+            retro_board=self,
+            round_number=1,
+            is_active=True
+        )
 
     # this automatically returns boards with the newest first
     class Meta:
         ordering = ['-created_at']  # Minus sign = descending order (newest first)
+
+class VotingRound(models.Model):
+    """
+    Tracks voting rounds per board
+    Each round gives users another 5 votes to use
+    Cards show cumulative total of votes over the rounds
+    """
+
+    retro_board = models.ForeignKey(
+        RetroBoard,
+        on_delete=models.CASCADE,
+        related_name='voting_rounds',
+    )
+
+    round_number = models.PositiveIntegerField(default=1) # each new board is round 1
+    is_active = models.BooleanField(default=True) # only one active round per board
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        status = "Active" if self.is_active else "Closed"
+        return f"{self.retro_board.title} - Round {self.round_number} ({status})"
+    
+    class Meta:
+        ordering = ['round_number']
+        # prevent duplicate round numbers on the same board
+        unique_together = ['retro_board', 'round_number']
 
 class Column(models.Model):
     """
@@ -171,6 +218,13 @@ class Vote(models.Model):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='votes')
     # ForeignKey = one user can cast many votes (across different cards)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='votes')
+    voting_round = models.ForeignKey(
+        VotingRound,
+        on_delete=models.CASCADE,
+        related_name='votes',
+        null=True, # allows existing votes to not have round temporarily
+        blank=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

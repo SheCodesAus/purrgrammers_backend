@@ -13,7 +13,7 @@ from rest_framework import viewsets, permissions, status  # Core DRF classes
 from rest_framework.decorators import action             # Custom endpoint decorator
 from rest_framework.response import Response             # JSON response wrapper
 from django.contrib.auth import get_user_model          # Dynamic user model reference
-from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag, VotingRound
 from .serializers import (
     RetroBoardSerializer,
     ColumnSerializer,
@@ -21,7 +21,8 @@ from .serializers import (
     VoteSerializer,
     CommentSerializer,
     ActionItemSerializer,
-    TagSerializer
+    TagSerializer,
+    VotingRoundSerializer
 )
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -171,6 +172,46 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         # Pass request context for user-specific data (voting status)
         serializer = CardSerializer(draft_cards, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def start_new_round(self, request, pk=None):
+        """
+        Start a new voting round for this board.
+        - Deactivates the current round
+        - Creates a new round with incremented round_number
+        - All users get fresh 5 votes
+        
+        POST /api/retro-boards/{id}/start_new_round/
+        """
+        board = self.get_object()
+        
+        # Get current active round and deactivate it
+        current_round = board.get_active_voting_round()
+        current_round.is_active = False
+        current_round.save()
+        
+        # Create new round
+        new_round = VotingRound.objects.create(
+            retro_board=board,
+            round_number=current_round.round_number + 1,
+            is_active=True
+        )
+        
+        # Broadcast to all connected clients
+        broadcast_to_board(
+            board.id,
+            'voting_round_started',
+            {
+                'previous_round': current_round.round_number,
+                'current_voting_round': VotingRoundSerializer(new_round).data,
+                'message': f'Voting round {new_round.round_number} started'
+            }
+        )
+        
+        return Response({
+            'message': f'Voting round {new_round.round_number} started',
+            'current_voting_round': VotingRoundSerializer(new_round).data
+        })
     
 # COLUMN MANAGEMENT - Ordered Content ViewSet
 # ==============================================

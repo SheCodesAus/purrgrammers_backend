@@ -64,14 +64,15 @@ class CustomUser(AbstractUser):
         """
         return self.username
     
-    def get_board_vote_count(self, retro_board):
+    def get_board_vote_count(self, retro_board, voting_round=None):
         """
         Return total number of votes user has cast on specific retro board
         
         BUSINESS LOGIC: Vote counting for retrospective sessions
-        - Each user has a limit of votes per retro board (usually 5)
+        - Each user has a limit of votes per voting round (usually 5)
         - This method counts how many votes they've already used
-        - Used to enforce voting limits and show remaining votes
+        - If voting_round is provided, counts only that round's votes
+        - If voting_round is None, counts ALL votes (for cumulative totals)
         
         DJANGO ORM CONCEPTS:
         - self.votes: uses reverse relationship (related_name='votes' in Vote model)
@@ -81,22 +82,23 @@ class CustomUser(AbstractUser):
         
         RELATIONSHIP CHAIN:
         User -> Vote -> Card -> Column -> RetroBoard
-        This traverses the entire relationship chain to find votes on a specific board
         """
-        # Using reverse relationship from user to vote (self.votes)
-        # Following the relationship chain: vote.card.column.retro_board
-        return self.votes.filter(
+        queryset = self.votes.filter(
             card__column__retro_board=retro_board
-        ).count()
+        )
+        # If specific round provided, filter by that round
+        if voting_round is not None:
+            queryset = queryset.filter(voting_round=voting_round)
+        return queryset.count()
     
     def get_remaining_board_votes(self, retro_board, max_votes=5):
         """
-        Return number of votes user has remaining on this retro board
+        Return number of votes user has remaining for CURRENT voting round
         
-        BUSINESS LOGIC: Vote limit enforcement
-        - Default limit: 5 votes per user per board
-        - Prevents vote spam and ensures fair participation
-        - max_votes parameter allows flexibility for different board types
+        BUSINESS LOGIC: Vote limit enforcement per round
+        - Default limit: 5 votes per user per ROUND (not per board)
+        - Each new round gives users fresh votes
+        - Uses board's active voting round automatically
         
         PYTHON CONCEPTS:
         - Default parameter: max_votes=5 (can be overridden if needed)
@@ -106,32 +108,28 @@ class CustomUser(AbstractUser):
         USAGE:
         - Frontend: show "X votes remaining" to users
         - API validation: prevent voting when limit reached
-        - Dashboard: display voting statistics
         """
-        used_votes = self.get_board_vote_count(retro_board)
-        # Ensure we never return negative votes (max ensures minimum of 0)
+        # Get the current active round for this board
+        active_round = retro_board.get_active_voting_round()
+        # Count votes only for the current round
+        used_votes = self.get_board_vote_count(retro_board, voting_round=active_round)
         return max(0, max_votes - used_votes)
     
     def can_vote_on_board(self, retro_board, max_votes=5):
         """
-        Check if user can cast another vote on this retro board
+        Check if user can cast another vote in the current voting round
         
-        BUSINESS LOGIC: Permission checking
+        BUSINESS LOGIC: Permission checking per round
         - Returns True/False for vote permission
-        - Used before allowing vote creation in views/serializers
-        - More semantic than checking remaining votes > 0
+        - Checks against CURRENT ROUND's vote count only
+        - Each new round resets this check
         
         PYTHON CONCEPTS:
         - Boolean return: True if can vote, False if limit reached
         - Comparison operator: < returns Boolean
-        - Method reuse: leverages get_board_vote_count() for consistency
-        
-        USAGE EXAMPLES:
-        - API views: if user.can_vote_on_board(board): allow_vote()
-        - Frontend: disable vote button when returns False
-        - Validation: raise error if False but vote attempted
+        - Method reuse: leverages get_remaining_board_votes() for consistency
         """
-        return self.get_board_vote_count(retro_board) < max_votes 
+        return self.get_remaining_board_votes(retro_board, max_votes) > 0
     
     
     # FRONTEND INTEGRATION: Avatar Generation

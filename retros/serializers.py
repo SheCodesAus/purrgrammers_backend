@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from users.serializers import CustomUserSerializer
 from django.contrib.auth import get_user_model
-from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag
+from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag, VotingRound
 
 User = get_user_model()
 
@@ -20,6 +20,7 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)  # for POST/PUT - accepts team id
     columns = serializers.SerializerMethodField() # columns
     action_items = serializers.SerializerMethodField() # action items
+    current_voting_round = serializers.SerializerMethodField() # current active voting round
     
     class Meta:
         model = RetroBoard
@@ -33,6 +34,7 @@ class RetroBoardSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
             'is_active',
+            'current_voting_round',
             'user_vote_count',
             'user_remaining_votes',
             'max_votes_per_user',
@@ -122,6 +124,11 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         """Get all action items for the board"""
         action_items = obj.action_items.all().order_by('created_at')
         return ActionItemSerializer(action_items, many=True).data
+    
+    def get_current_voting_round(self, obj):
+        """Get the active voting round"""
+        active_round = obj.get_active_voting_round()
+        return VotingRoundSerializer(active_round).data
 
 class TagSerializer(serializers.ModelSerializer):
     """
@@ -133,6 +140,16 @@ class TagSerializer(serializers.ModelSerializer):
         model = Tag
         fields = ['id', 'name', 'display_name']
         read_only_fields = ['id', 'name', 'display_name']
+
+class VotingRoundSerializer(serializers.ModelSerializer):
+    """
+    Serializer for voting round - tracks voting rounds per board
+    """
+
+    class Meta:
+        model = VotingRound
+        fields = ['id', 'round_number', 'is_active', 'created_at']
+        read_only_fields = ['id', 'round_number', 'is_active', 'created_at']
 
 
 class ColumnSerializer(serializers.ModelSerializer):
@@ -237,23 +254,28 @@ class VoteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # automatically set user to current user
         validated_data['user_id'] = self.context['request'].user.id
+        # automatically assign vote to the boards current active round
+        card = validated_data['card']
+        board = card.column.retro_board
+        validated_data['voting_round'] = board.get_active_voting_round()
         return super().create(validated_data)
     
     def validate(self, data):
-        """Check the user hasn't exceeded 5 votes on the current board"""
+        """Check the user hasn't exceeded 5 votes in the current voting round"""
         user = self.context['request'].user
         card = data['card']
         retro_board = card.column.retro_board
 
-        # check if user has reached vote limit on this board
-        current_vote_count = user.get_board_vote_count(retro_board)
+        # check if user has reached vote limit for THIS ROUND
+        active_round = retro_board.get_active_voting_round()
+        current_vote_count = user.get_board_vote_count(retro_board, voting_round=active_round)
         max_votes = 5  # Business rule
 
         if current_vote_count >= max_votes:
             # Raise validation error to prevent vote creation
             raise serializers.ValidationError(
-                f"You have reached the maximum of {max_votes} for this board. "
-                f"You currently have {current_vote_count} votes." 
+                f"You have reached the maximum of {max_votes} votes for round {active_round.round_number}. "
+                f"You currently have {current_vote_count} votes in this round." 
             )
         
         return data
