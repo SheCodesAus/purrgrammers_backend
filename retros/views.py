@@ -234,10 +234,8 @@ class ColumnViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]    # Auth required
 
     def get_queryset(self):
-        """
-        POSITION-BASED ORDERING
+        """POSITION-BASED ORDERING"""
         return Column.objects.all().order_by('position')
-        """
     
     # RELATIONSHIP ACTION: Get Column Cards
   
