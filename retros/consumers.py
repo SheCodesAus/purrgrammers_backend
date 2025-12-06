@@ -35,6 +35,11 @@ class BoardConsumer(AsyncWebsocketConsumer):
 
     # event handlers - called when views broadcast events
 
+    # BOARD
+
+    async def board_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
     # COLUMNS
 
     async def column_created(self, event):

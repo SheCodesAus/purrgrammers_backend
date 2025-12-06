@@ -213,6 +213,15 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
             'current_voting_round': VotingRoundSerializer(new_round).data
         })
     
+    # websocket override - only need patch
+    def perform_update(self, serializer):
+        board = serializer.save()
+        broadcast_to_board(
+          board.id,
+          'board_updated',
+          RetroBoardSerializer(board).data  
+        )
+    
 # COLUMN MANAGEMENT - Ordered Content ViewSet
 # ==============================================
 class ColumnViewSet(viewsets.ModelViewSet):
