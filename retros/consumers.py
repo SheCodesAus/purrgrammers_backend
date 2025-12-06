@@ -35,6 +35,11 @@ class BoardConsumer(AsyncWebsocketConsumer):
 
     # event handlers - called when views broadcast events
 
+    # TEAM (through board)
+
+    async def team_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
     # BOARD
 
     async def board_updated(self, event):

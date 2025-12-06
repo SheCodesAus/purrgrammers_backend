@@ -1,11 +1,4 @@
 # TEAMS VIEWS - Advanced ViewSet Patterns & Member Management
-# ===========================================================
-# This file demonstrates sophisticated ViewSet patterns:
-# - Dynamic serializer selection based on action
-# - Complex custom actions with URL parameters
-# - Cross-app imports and circular import prevention
-# - Query optimization with select_related/prefetch_related
-# - Advanced filtering and business logic
 
 # CORE IMPORTS
 # ==============
@@ -20,9 +13,9 @@ from .serializers import (
     TeamMembershipSerializer,
     TeamMembershipCreateSerializer                    # Specialized create serializer
 )
+from retros.views import broadcast_to_board
 
-# DYNAMIC USER MODEL
-# ====================
+
 # Always use get_user_model() instead of importing User directly
 # This ensures compatibility with custom user models
 User = get_user_model()
@@ -30,57 +23,19 @@ User = get_user_model()
 # TEAM MANAGEMENT - Advanced ViewSet Patterns
 # ==============================================
 class TeamViewSet(viewsets.ModelViewSet):
-    """
-    COMPREHENSIVE TEAM MANAGEMENT VIEWSET
     
-    ADVANCED PATTERNS DEMONSTRATED:
-    - Dynamic serializer selection (get_serializer_class)
-    - Complex query optimization (select_related/prefetch_related)
-    - Custom actions with URL parameters
-    - Cross-app imports to prevent circular dependencies
-    - Business logic separation in custom actions
-    
-    ENDPOINTS PROVIDED:
-    - Standard CRUD: GET/POST/PUT/PATCH/DELETE /api/teams/
-    - Member management: POST /api/teams/{id}/add-member/
-    - Member removal: DELETE /api/teams/{id}/remove-member/{user_id}/
-    - Board assignment: POST /api/teams/{id}/assign-board/
-    - User filtering: GET /api/teams/my-teams/
-    """
     
     queryset = Team.objects.filter(is_active=True)     # Only active teams
     permission_classes = [permissions.IsAuthenticated] # Must be logged in
     
     def get_serializer_class(self):
-        """
-        DYNAMIC SERIALIZER SELECTION
-        
-        WHY DIFFERENT SERIALIZERS?
-        - List view: Lighter serializer for better performance
-        - Detail view: Full serializer with all relationships
-        - Create/Update: May need validation-specific serializers
-        
-        PERFORMANCE BENEFIT:
-        - List views load faster with minimal data
-        - Detail views provide complete information when needed
-        """
         if self.action == 'list':
             return TeamListSerializer      # Lighter serializer for lists
         return TeamSerializer              # Full serializer for detail operations
     
     def get_queryset(self):
-        """
-        ADVANCED QUERY OPTIMIZATION & FILTERING
+       
         
-        OPTIMIZATION TECHNIQUES:
-        - select_related(): JOINs for ForeignKey relationships (created_by)
-        - prefetch_related(): Separate queries for ManyToMany (members, memberships)
-        - Reduces database queries from N+1 to 2-3 queries total
-        
-        SECURITY:
-        - Only returns teams where the current user is a member
-        - Prevents users from seeing teams they don't belong to
-        """
         queryset = Team.objects.filter(is_active=True, members=self.request.user)
         
         # PERFORMANCE OPTIMIZATION
@@ -94,30 +49,14 @@ class TeamViewSet(viewsets.ModelViewSet):
     def add_member(self, request, pk=None):
         """
         MEMBER MANAGEMENT ACTION
-        
-        BUSINESS LOGIC:
-        - Creates TeamMembership relationship
-        - Validates user exists and isn't already member
-        - Provides detailed success/error responses
-        
-        URL PATTERN: POST /api/teams/{id}/add-member/
-        PAYLOAD: {'user_id': 123, 'role': 'member'}
-        
-        WHY CUSTOM ACTION?
-        - More semantic than generic membership creation
-        - Encapsulates team-specific validation
-        - Provides better error messages
         """
         team = self.get_object()
         
         # DATA PREPARATION
-        # ==================
         # Add team context to request data for validation
         data = request.data.copy()
         data['team_id'] = team.id
         
-        # SPECIALIZED SERIALIZER
-        # =======================
         # Use create-specific serializer for different validation rules
         serializer = TeamMembershipCreateSerializer(
             data=data, 
@@ -126,15 +65,19 @@ class TeamViewSet(viewsets.ModelViewSet):
         
         if serializer.is_valid():
             membership = serializer.save()
-            # SUCCESS RESPONSE WITH DETAILS
-            # ==============================
+
+            # broadcast to all boards using this team
+            for board in team.retro_boards.all():
+                broadcast_to_board(
+                    board.id,
+                    'team_updated',
+                    {'team_id': team.id, 'action': 'member_added'}
+                )
             return Response({
                 'message': 'Member added successfully',
                 'membership': TeamMembershipSerializer(membership).data
             }, status=status.HTTP_201_CREATED)
         
-        # VALIDATION ERROR HANDLING
-        # ===========================
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     # CUSTOM ACTION: Remove Team Member (Advanced URL Pattern)
@@ -144,22 +87,10 @@ class TeamViewSet(viewsets.ModelViewSet):
         """
         MEMBER REMOVAL WITH URL PARAMETERS
         
-        ADVANCED PATTERN: URL Parameter Capture
-        - Uses regex pattern to capture user_id from URL
-        - Pattern: (?P<user_id>[^/.]+) captures anything except / or .
-        - Accessible as function parameter: user_id
-        
-        URL EXAMPLE: DELETE /api/teams/5/remove-member/123/
-        
-        ERROR HANDLING:
-        - User not found: 404 with clear message
-        - Not a member: 404 with specific error
-        - Success: 200 with confirmation message
         """
         team = self.get_object()
         
-        # USER VALIDATION
-        # ==================
+    
         # Validate user exists before attempting removal
         try:
             user_to_remove = User.objects.get(id=user_id)
@@ -169,18 +100,24 @@ class TeamViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # MEMBERSHIP REMOVAL
-        # ====================
+        
         # Find and delete the specific membership relationship
         try:
             membership = TeamMembership.objects.get(team=team, user=user_to_remove)
             membership.delete()
-            
-            # SUCCESS CONFIRMATION
-            # =====================
+
+            # broadcast to boards
+            for board in team.retro_boards.all():
+                broadcast_to_board(
+                    board.id,
+                    'team_updated',
+                    {'team_id': team.id, 'action': 'member_removed'}
+                )
+
             return Response({
                 'message': f'{user_to_remove.username} removed from {team.name}'
             }, status=status.HTTP_200_OK)
+            
         
         except TeamMembership.DoesNotExist:
             # BUSINESS LOGIC ERROR
@@ -204,16 +141,6 @@ class TeamViewSet(viewsets.ModelViewSet):
     def retro_boards(self, request, pk=None):
         """
         CROSS-APP RELATIONSHIP ACCESS
-        
-        PATTERN: Local Import to Prevent Circular Dependencies
-        - Import inside method instead of top-level
-        - Prevents circular import between teams <-> retros apps
-        - Only imports when actually needed (lazy loading)
-        
-        WHY NOT TOP-LEVEL IMPORT?
-        - teams.views imports retros.serializers
-        - retros.views might import teams.serializers
-        - Creates circular dependency at startup
         
         URL: GET /api/teams/{id}/retro-boards/
         """
@@ -300,7 +227,7 @@ class TeamViewSet(viewsets.ModelViewSet):
 # =========================================
 class TeamMembershipViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    🎯 AUDIT TRAIL MANAGEMENT VIEWSET
+    AUDIT TRAIL MANAGEMENT VIEWSET
     
     READ-ONLY PATTERN:
     - Only provides list() and retrieve() endpoints
