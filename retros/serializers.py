@@ -91,8 +91,8 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         """Get team info with members for assignee dropdown"""
         if obj.team:
             team = obj.team
-            # Get members with just the fields needed for assignee dropdown
-            members = team.members.all().values('id', 'username', 'first_name', 'last_name')
+            # Get members with just the fields needed for assignee dropdown - alphabetically sorted
+            members = team.members.all().order_by('username').values('id', 'username', 'first_name', 'last_name')
             members_with_initials = []
             for member in members:
                 initials = ''
