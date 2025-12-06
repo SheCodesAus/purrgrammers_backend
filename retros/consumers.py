@@ -34,6 +34,20 @@ class BoardConsumer(AsyncWebsocketConsumer):
         pass
 
     # event handlers - called when views broadcast events
+
+    # COLUMNS
+
+    async def column_created(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def column_updated(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def column_deleted(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    # CARDS
+
     async def card_created(self, event):
         """Send card created event to websocket"""
         await self.send(text_data=json.dumps(event))
@@ -47,6 +61,8 @@ class BoardConsumer(AsyncWebsocketConsumer):
     async def card_moved(self, event):
         await self.send(text_data=json.dumps(event))
 
+    # ACTION ITEMS
+
     async def action_item_created(self, event):
         await self.send(text_data=json.dumps(event))
 
@@ -56,12 +72,11 @@ class BoardConsumer(AsyncWebsocketConsumer):
     async def action_item_deleted(self, event):
         await self.send(text_data=json.dumps(event))
 
-    # Vote event handler
+    # VOTES
     async def card_voted(self, event):
         """Send card voted event to websocket"""
         await self.send(text_data=json.dumps(event))
 
-    # Voting round event handler
     async def voting_round_started(self, event):
         """Send voting round started event to websocket"""
         await self.send(text_data=json.dumps(event))

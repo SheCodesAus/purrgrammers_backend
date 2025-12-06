@@ -218,22 +218,6 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
 class ColumnViewSet(viewsets.ModelViewSet):
     """
     COLUMN MANAGEMENT VIEWSET
-    
-    BUSINESS PURPOSE:
-    - Manages retro board columns (Start, Stop, Continue)
-    - Maintains display order through position field
-    - Provides card access through relationship
-    
-    MODELVIEWSET FEATURES:
-    - Full CRUD operations for columns
-    - Automatic REST endpoint generation
-    - Custom ordering via get_queryset override
-    - Relationship traversal with custom actions
-    
-    WHY SEPARATE FROM BOARDS?
-    - Columns can be customized per board
-    - Different retro formats may need different columns
-    - Allows for drag & drop reordering
     """
 
     queryset = Column.objects.all()                        # Base queryset
@@ -243,18 +227,8 @@ class ColumnViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         POSITION-BASED ORDERING
-        
-        WHY OVERRIDE?
-        - UI needs consistent left-to-right column order
-        - position field determines visual layout
-        - Ensures Start -> Stop -> Continue order
-        
-        BUSINESS RULE:
-        - position=0: Leftmost column (usually 'Start')
-        - position=1: Middle column (usually 'Stop') 
-        - position=2: Rightmost column (usually 'Continue')
-        """
         return Column.objects.all().order_by('position')
+        """
     
     # RELATIONSHIP ACTION: Get Column Cards
   
@@ -262,23 +236,6 @@ class ColumnViewSet(viewsets.ModelViewSet):
     def cards(self, request, pk=None):
         """
         COLUMN CARD ACCESS ACTION
-        
-        RELATIONSHIP TRAVERSAL:
-        - Uses reverse ForeignKey relationship
-        - column.cards.all() accesses related Card objects
-        - related_name='cards' defined in Card model
-        
-        CONTEXT IMPORTANCE:
-        - CardSerializer needs request context
-        - Required for user-specific voting information
-        - Enables 'user_has_voted' SerializerMethodField
-        
-        URL PATTERN: GET /api/columns/{id}/cards/
-        
-        WHY NOT DIRECT QUERY?
-        - Ensures proper column context and permissions
-        - Can add column-specific card filtering later
-        - More semantic than /api/cards/?column_id=X
         """
         column = self.get_object()
         
@@ -292,6 +249,34 @@ class ColumnViewSet(viewsets.ModelViewSet):
         # Pass request context for voting information
         serializer = CardSerializer(cards, many=True, context={'request': request})
         return Response(serializer.data)
+    
+    # WEB SOCKET OVERRIDES
+
+    def perform_create(self, serializer):
+        column = serializer.save()
+        broadcast_to_board(
+            column.retro_board.id,
+            'column_created',
+            ColumnSerializer(column).data
+        )
+
+    def perform_update(self, serializer):
+        column = serializer.save()
+        broadcast_to_board(
+            column.retro_board.id,
+            'column_updated',
+            ColumnSerializer(column).data
+        )
+
+    def perform_destroy(self, instance):
+        board_id = instance.retro_board.id
+        column_id = instance.id
+        instance.delete()
+        broadcast_to_board(
+            board_id,
+            'column_deleted',
+            {'id': column_id}
+        )
     
 # CARD MANAGEMENT - Logic ViewSet  
 
