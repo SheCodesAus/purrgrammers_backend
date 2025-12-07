@@ -10,7 +10,7 @@ class RetroBoard(models.Model):
     Main retrospective session - the container for all retro activities
     Each board can be assigned to one team
     """
-    title = models.CharField(max_length=200)
+    title = models.TextField(blank=True)
     description = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_boards')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -117,7 +117,7 @@ class Column(models.Model):
 
     # ForeignKey = one board can have many columns
     retro_board = models.ForeignKey(RetroBoard, on_delete=models.CASCADE, related_name='columns')
-    title = models.CharField(max_length=100)
+    title = models.TextField(blank=True)
     column_type = models.CharField(max_length=10, choices=COLUMN_TYPES, default='custom')
     position = models.PositiveIntegerField(default=0) # only allows positive positions (0,1,2,3)
     color = models.CharField(max_length=7, default='#3B82F6') # hex color code
