@@ -19,6 +19,10 @@ class RetroBoard(models.Model):
     # One team per board; a team can have multiple boards
     team = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='retro_boards')
     
+    # Voting configuration
+    max_votes_per_round = models.PositiveIntegerField(default=5)  # Total votes per user per round
+    max_votes_per_card = models.PositiveIntegerField(null=True, blank=True)  # null = unlimited per card
+    
 
     def __str__(self):
         
@@ -29,9 +33,9 @@ class RetroBoard(models.Model):
         """Return number of votes user has cast on board"""
         return user.get_board_vote_count(self)
     
-    def get_user_remaining_votes(self, user, max_votes=5):
-        """REturn number of votes remaining"""
-        return user.get_remaining_board_votes(self, max_votes)
+    def get_user_remaining_votes(self, user):
+        """Return number of votes remaining for this board's settings"""
+        return user.get_remaining_board_votes(self, self.max_votes_per_round)
     
     def get_total_votes(self):
         """Return total number of votes cast on this entire board"""

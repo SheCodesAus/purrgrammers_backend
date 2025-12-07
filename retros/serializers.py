@@ -38,6 +38,8 @@ class RetroBoardSerializer(serializers.ModelSerializer):
             'user_vote_count',
             'user_remaining_votes',
             'max_votes_per_user',
+            'max_votes_per_round',
+            'max_votes_per_card',
             'team',
             'team_id',
             'columns',
@@ -84,8 +86,8 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         return 5  # Default if not authenticated
     
     def get_max_votes_per_user(self, obj):
-        """Retrun the max votes allowed per user (5)"""
-        return 5  # Business rule: 5 votes per user per board
+        """Return the max votes allowed per user per round"""
+        return obj.max_votes_per_round
     
     def get_team(self, obj):
         """Get team info with members for assignee dropdown"""
@@ -252,7 +254,7 @@ class VoteSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
     def validate(self, data):
-        """Check voting is open and user hasn't exceeded vote limit"""
+        """Check voting is open and user hasn't exceeded vote limits"""
         user = self.context['request'].user
         card = data['card']
         retro_board = card.column.retro_board
@@ -264,15 +266,29 @@ class VoteSerializer(serializers.ModelSerializer):
                 "Voting has not started yet. Wait for the facilitator to start voting."
             )
 
-        # Check if user has reached vote limit for THIS ROUND
+        # Check if user has reached total vote limit for THIS ROUND
         current_vote_count = user.get_board_vote_count(retro_board, voting_round=active_round)
-        max_votes = 5  # Business rule
+        max_votes = retro_board.max_votes_per_round
 
         if current_vote_count >= max_votes:
             raise serializers.ValidationError(
                 f"You have reached the maximum of {max_votes} votes for round {active_round.round_number}. "
                 f"You currently have {current_vote_count} votes in this round." 
             )
+        
+        # Check per-card limit (if configured)
+        if retro_board.max_votes_per_card is not None:
+            user_votes_on_card = Vote.objects.filter(
+                card=card,
+                user=user,
+                voting_round=active_round
+            ).count()
+            
+            if user_votes_on_card >= retro_board.max_votes_per_card:
+                raise serializers.ValidationError(
+                    f"You have reached the maximum of {retro_board.max_votes_per_card} "
+                    f"vote(s) on this card for round {active_round.round_number}."
+                )
         
         return data
 
