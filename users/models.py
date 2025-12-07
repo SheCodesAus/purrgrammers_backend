@@ -111,6 +111,11 @@ class CustomUser(AbstractUser):
         """
         # Get the current active round for this board
         active_round = retro_board.get_active_voting_round()
+        
+        # If no active round, user has all votes available (voting hasn't started)
+        if active_round is None:
+            return max_votes
+            
         # Count votes only for the current round
         used_votes = self.get_board_vote_count(retro_board, voting_round=active_round)
         return max(0, max_votes - used_votes)

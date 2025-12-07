@@ -251,6 +251,31 @@ class VoteSerializer(serializers.ModelSerializer):
         fields = ['id', 'card', 'user', 'user_id', 'created_at']
         read_only_fields = ['id', 'created_at']
 
+    def validate(self, data):
+        """Check voting is open and user hasn't exceeded vote limit"""
+        user = self.context['request'].user
+        card = data['card']
+        retro_board = card.column.retro_board
+
+        # Check if voting has started
+        active_round = retro_board.get_active_voting_round()
+        if active_round is None:
+            raise serializers.ValidationError(
+                "Voting has not started yet. Wait for the facilitator to start voting."
+            )
+
+        # Check if user has reached vote limit for THIS ROUND
+        current_vote_count = user.get_board_vote_count(retro_board, voting_round=active_round)
+        max_votes = 5  # Business rule
+
+        if current_vote_count >= max_votes:
+            raise serializers.ValidationError(
+                f"You have reached the maximum of {max_votes} votes for round {active_round.round_number}. "
+                f"You currently have {current_vote_count} votes in this round." 
+            )
+        
+        return data
+
     def create(self, validated_data):
         # automatically set user to current user
         validated_data['user_id'] = self.context['request'].user.id
@@ -259,26 +284,6 @@ class VoteSerializer(serializers.ModelSerializer):
         board = card.column.retro_board
         validated_data['voting_round'] = board.get_active_voting_round()
         return super().create(validated_data)
-    
-    def validate(self, data):
-        """Check the user hasn't exceeded 5 votes in the current voting round"""
-        user = self.context['request'].user
-        card = data['card']
-        retro_board = card.column.retro_board
-
-        # check if user has reached vote limit for THIS ROUND
-        active_round = retro_board.get_active_voting_round()
-        current_vote_count = user.get_board_vote_count(retro_board, voting_round=active_round)
-        max_votes = 5  # Business rule
-
-        if current_vote_count >= max_votes:
-            # Raise validation error to prevent vote creation
-            raise serializers.ValidationError(
-                f"You have reached the maximum of {max_votes} votes for round {active_round.round_number}. "
-                f"You currently have {current_vote_count} votes in this round." 
-            )
-        
-        return data
     
 class CommentSerializer(serializers.ModelSerializer):
     """

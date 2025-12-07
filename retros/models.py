@@ -53,23 +53,10 @@ class RetroBoard(models.Model):
     
     def get_active_voting_round(self):
         """
-        Get the current active voting round
-        Creates round 1 if no round exists yet
+        Get the current active voting round.
+        Returns None if voting hasn't started yet.
         """
-
-        # try to get active round
-        active_round = self.voting_rounds.filter(is_active=True).first()
-
-        if active_round:
-            return active_round
-        
-        # if no active round - creates round one
-        # handles boards that were created before I implemented this feature
-        return VotingRound.objects.create(
-            retro_board=self,
-            round_number=1,
-            is_active=True
-        )
+        return self.voting_rounds.filter(is_active=True).first()
 
     # this automatically returns boards with the newest first
     class Meta:

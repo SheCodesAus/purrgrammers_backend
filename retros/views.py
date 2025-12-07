@@ -174,42 +174,53 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
-    def start_new_round(self, request, pk=None):
+    def start_voting(self, request, pk=None):
         """
-        Start a new voting round for this board.
-        - Deactivates the current round
-        - Creates a new round with incremented round_number
-        - All users get fresh 5 votes
+        Start or advance voting for this board.
+        - If no rounds exist: creates Round 1
+        - If active round exists: deactivates it and creates next round
+        - All users get fresh 5 votes each round
         
-        POST /api/retro-boards/{id}/start_new_round/
+        POST /api/retro-boards/{id}/start_voting/
         """
         board = self.get_object()
-        
-        # Get current active round and deactivate it
         current_round = board.get_active_voting_round()
-        current_round.is_active = False
-        current_round.save()
         
-        # Create new round
-        new_round = VotingRound.objects.create(
-            retro_board=board,
-            round_number=current_round.round_number + 1,
-            is_active=True
-        )
+        if current_round is None:
+            # No voting yet - start Round 1
+            new_round = VotingRound.objects.create(
+                retro_board=board,
+                round_number=1,
+                is_active=True
+            )
+            message = 'Voting has started!'
+            previous_round = None
+        else:
+            # Deactivate current round and start next
+            current_round.is_active = False
+            current_round.save()
+            
+            new_round = VotingRound.objects.create(
+                retro_board=board,
+                round_number=current_round.round_number + 1,
+                is_active=True
+            )
+            message = f'Voting round {new_round.round_number} started'
+            previous_round = current_round.round_number
         
         # Broadcast to all connected clients
         broadcast_to_board(
             board.id,
             'voting_round_started',
             {
-                'previous_round': current_round.round_number,
+                'previous_round': previous_round,
                 'current_voting_round': VotingRoundSerializer(new_round).data,
-                'message': f'Voting round {new_round.round_number} started'
+                'message': message
             }
         )
         
         return Response({
-            'message': f'Voting round {new_round.round_number} started',
+            'message': message,
             'current_voting_round': VotingRoundSerializer(new_round).data
         })
     
