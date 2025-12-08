@@ -492,11 +492,13 @@ class CardViewSet(viewsets.ModelViewSet):
                 
                 # REAL-TIME FEEDBACK
                 remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
+                active_round = card.column.retro_board.get_active_voting_round()
+                user_votes_on_card = card.votes.filter(user=request.user, voting_round=active_round).count()
                 return Response({
                     'message': 'Vote added',
                     'remaining_votes': remaining_votes,
                     'total_card_votes': card.vote_count,
-                    'user_votes_on_card': card.votes.filter(user=request.user).count()
+                    'user_votes_on_card': user_votes_on_card
                 }, status=status.HTTP_201_CREATED)
             
             return Response(vote_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -526,7 +528,8 @@ class CardViewSet(viewsets.ModelViewSet):
                 
                 # REAL-TIME FEEDBACK
                 remaining_votes = request.user.get_remaining_board_votes(card.column.retro_board)
-                user_votes_on_card = card.votes.filter(user=request.user).count()
+                active_round = card.column.retro_board.get_active_voting_round()
+                user_votes_on_card = card.votes.filter(user=request.user, voting_round=active_round).count() if active_round else 0
                 
                 return Response({
                     'message': 'Vote removed',
