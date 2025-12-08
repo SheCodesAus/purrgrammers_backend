@@ -248,6 +248,45 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
             'message': 'Voting has been reset',
             'current_voting_round': None
         })
+
+    @action(detail=True, methods=['post'])
+    def stop_voting(self, request, pk=None):
+        """
+        Stop/pause voting for this board.
+        - Deactivates the current round (votes are preserved)
+        - Users cannot vote until a new round is started
+        
+        POST /api/retro-boards/{id}/stop_voting/
+        """
+        board = self.get_object()
+        current_round = board.get_active_voting_round()
+
+        if current_round is None:
+            return Response({
+                'error': 'No active voting round to stop',
+                'current_voting_round': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Deactivate the current round (keep votes)
+        current_round.is_active = False
+        current_round.save()
+
+        # Broadcast to all connected clients
+        broadcast_to_board(
+            board.id,
+            'voting_stopped',
+            {
+                'message': f'Voting round {current_round.round_number} has ended',
+                'stopped_round': current_round.round_number,
+                'current_voting_round': None
+            }
+        )
+
+        return Response({
+            'message': f'Voting round {current_round.round_number} has ended',
+            'stopped_round': current_round.round_number,
+            'current_voting_round': None
+        })
     
     # websocket override - only need patch
     def perform_update(self, serializer):
