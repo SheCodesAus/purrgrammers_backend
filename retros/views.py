@@ -179,45 +179,56 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         Start or advance voting for this board.
         - If no rounds exist: creates Round 1
         - If active round exists: deactivates it and creates next round
-        - All users get fresh 5 votes each round
+        - If stopped round exists: creates next round after highest
+        - All users get fresh votes each round
         
         POST /api/retro-boards/{id}/start_voting/
         """
         board = self.get_object()
         current_round = board.get_active_voting_round()
         
-        if current_round is None:
-            # No voting yet - start Round 1
-            new_round = VotingRound.objects.create(
-                retro_board=board,
-                round_number=1,
-                is_active=True
-            )
-            message = 'Voting has started!'
-            previous_round = None
-        else:
-            # Deactivate current round and start next
+        if current_round is not None:
+            # Active round exists - deactivate it and start next
             current_round.is_active = False
             current_round.save()
-            
-            new_round = VotingRound.objects.create(
-                retro_board=board,
-                round_number=current_round.round_number + 1,
-                is_active=True
-            )
-            message = f'Voting round {new_round.round_number} started'
+            next_round_number = current_round.round_number + 1
             previous_round = current_round.round_number
+        else:
+            # No active round - check if any rounds exist (stopped state)
+            last_round = board.voting_rounds.order_by('-round_number').first()
+            if last_round:
+                # Rounds exist but none active (stopped state) - start next round
+                next_round_number = last_round.round_number + 1
+                previous_round = last_round.round_number
+            else:
+                # No rounds at all - start Round 1
+                next_round_number = 1
+                previous_round = None
+        
+        new_round = VotingRound.objects.create(
+            retro_board=board,
+            round_number=next_round_number,
+            is_active=True
+        )
+        
+        if next_round_number == 1:
+            message = 'Voting has started!'
+        else:
+            message = f'Voting round {new_round.round_number} started'
         
         # Broadcast to all connected clients
-        broadcast_to_board(
-            board.id,
-            'voting_round_started',
-            {
-                'previous_round': previous_round,
-                'current_voting_round': VotingRoundSerializer(new_round).data,
-                'message': message
-            }
-        )
+        try:
+            broadcast_to_board(
+                board.id,
+                'voting_round_started',
+                {
+                    'previous_round': previous_round,
+                    'current_voting_round': VotingRoundSerializer(new_round).data,
+                    'message': message
+                }
+            )
+        except Exception as e:
+            print(f"WebSocket broadcast failed: {e}")
         
         return Response({
             'message': message,
