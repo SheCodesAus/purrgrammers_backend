@@ -225,11 +225,17 @@ class CardSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
     
     def get_user_vote_count(self, obj):
-        """Get number of times current user has voted on card"""
+        """Get number of times current user has voted on this card in the CURRENT round"""
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            # Filter votes on this card by current user
-            return obj.votes.filter(user=request.user).count()
+            # Get current active voting round
+            current_round = obj.column.retro_board.get_active_voting_round() if obj.column else None
+            if current_round:
+                # Filter votes by current round only
+                return obj.votes.filter(user=request.user, voting_round=current_round).count()
+            else:
+                # No active round - return 0 (voting not started or stopped)
+                return 0
         return 0
     
     def get_user_board_votes_remaining(self, obj):
