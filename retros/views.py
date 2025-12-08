@@ -224,6 +224,31 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
             'current_voting_round': VotingRoundSerializer(new_round).data
         })
     
+    @action(detail=True, methods=['post'])
+    def reset_voting(self, request, pk=None):
+        board = self.get_object()
+
+        # delete all votes for board: vote -> card -> column -> retroboard
+        Vote.objects.filter(card__column__retro_board=board).delete()
+
+        # delete all voting rounds for board
+        board.voting_rounds.all().delete()
+
+        # Broadcast to all connected clients
+        broadcast_to_board(
+            board.id,
+            'voting_reset',
+            {
+                'message': 'Voting has been reset',
+                'current_voting_round': None
+            }
+        )
+
+        return Response({
+            'message': 'Voting has been reset',
+            'current_voting_round': None
+        })
+    
     # websocket override - only need patch
     def perform_update(self, serializer):
         board = serializer.save()

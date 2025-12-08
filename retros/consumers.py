@@ -90,3 +90,7 @@ class BoardConsumer(AsyncWebsocketConsumer):
     async def voting_round_started(self, event):
         """Send voting round started event to websocket"""
         await self.send(text_data=json.dumps(event))
+
+    async def voting_reset(self, event):
+        """Send voting reset event to websocket"""
+        await self.send(text_data=json.dumps(event))
