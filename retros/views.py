@@ -235,14 +235,17 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         board.voting_rounds.all().delete()
 
         # Broadcast to all connected clients
-        broadcast_to_board(
-            board.id,
-            'voting_reset',
-            {
-                'message': 'Voting has been reset',
-                'current_voting_round': None
-            }
-        )
+        try:
+            broadcast_to_board(
+                board.id,
+                'voting_reset',
+                {
+                    'message': 'Voting has been reset',
+                    'current_voting_round': None
+                }
+            )
+        except Exception as e:
+            print(f"WebSocket broadcast failed: {e}")
 
         return Response({
             'message': 'Voting has been reset',
@@ -272,15 +275,18 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         current_round.save()
 
         # Broadcast to all connected clients
-        broadcast_to_board(
-            board.id,
-            'voting_stopped',
-            {
-                'message': f'Voting round {current_round.round_number} has ended',
-                'stopped_round': current_round.round_number,
-                'current_voting_round': None
-            }
-        )
+        try:
+            broadcast_to_board(
+                board.id,
+                'voting_stopped',
+                {
+                    'message': f'Voting round {current_round.round_number} has ended',
+                    'stopped_round': current_round.round_number,
+                    'current_voting_round': None
+                }
+            )
+        except Exception as e:
+            print(f"WebSocket broadcast failed: {e}")
 
         return Response({
             'message': f'Voting round {current_round.round_number} has ended',
