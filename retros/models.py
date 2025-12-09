@@ -132,24 +132,29 @@ class Tag(models.Model):
         # languages
         ('python', 'Python'),
         ('javascript', 'JavaScript'),
-        ('java', 'Java'),
-        ('csharp', 'C#'),
-        ('typescript', 'TypeScript'),
+        ('html', 'HTML'),
+        ('css', 'CSS'),
+        #('java', 'Java'),
+        #('csharp', 'C#'),
+        #('typescript', 'TypeScript'),
 
         # frameworks
         ('django', 'Django'),
-        ('nodejs', 'Node.js'),
+        #('nodejs', 'Node.js'),
         ('react', 'React'),
-        ('angular', 'Angular'),
+        ('git/github', 'Git/GitHub'),
+        ('vscode', 'VSCode'),
+        ('deployment', 'Deployment'),
+        #('angular', 'Angular'),
 
         # other
         ('tools', 'Tools'),
         ('team_culture', 'Team Culture'),
         ('workload', 'Workload'),
-        ('communication', 'Communication'),
+        ('content', 'Content'),
+        ('networking', 'Networking'),
+        ('mentors', 'Mentors')
 
-        # we don't have to implement this one, just adding it in case
-        ('custom', 'Custom'),
     ]
 
     name = models.CharField(max_length=50, choices=TAG_CHOICES, unique=True)
