@@ -48,7 +48,7 @@ def reverse_tags(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('retros', '0017_retroboard_max_votes_per_card_and_more'),
+        ('retros', '0018_alter_tag_name'),
     ]
 
     operations = [
