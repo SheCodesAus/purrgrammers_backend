@@ -173,6 +173,177 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         serializer = CardSerializer(draft_cards, many=True, context={'request': request})
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def report(self, request, pk=None):
+        """
+        Generate a report for this board.
+        
+        GET /api/retro-boards/{id}/report/          → JSON report
+        GET /api/retro-boards/{id}/report/?format=csv → CSV download
+        
+        Includes:
+        - Tag summary (cards per tag)
+        - Top voted cards
+        - User engagement (anonymized)
+        - Action items summary
+        """
+        from django.http import HttpResponse
+        from django.db.models import Count
+        import csv
+        
+        board = self.get_object()
+        
+        # Get all cards for this board
+        cards = Card.objects.filter(
+            column__retro_board=board
+        ).prefetch_related('tags', 'votes')
+        
+        # TAG SUMMARY: Count cards per tag
+        tag_summary = []
+        for tag in Tag.objects.all():
+            card_count = cards.filter(tags=tag).count()
+            if card_count > 0:
+                tag_summary.append({
+                    'tag': tag.name,
+                    'card_count': card_count
+                })
+        tag_summary.sort(key=lambda x: x['card_count'], reverse=True)
+        
+        # TOP VOTED CARDS: Cards with most votes
+        top_voted = cards.annotate(
+            total_votes=Count('votes')
+        ).filter(total_votes__gt=0).order_by('-total_votes')[:10]
+        
+        top_voted_list = [{
+            'content': card.content[:100],
+            'votes': card.total_votes,
+            'column': card.column.title if card.column else 'No column',
+            'tags': [t.name for t in card.tags.all()]
+        } for card in top_voted]
+        
+        # USER ENGAGEMENT: Anonymized stats
+        # Get unique users who created cards or voted
+        card_creators = cards.values('created_by').annotate(
+            cards_created=Count('id')
+        ).order_by('-cards_created')
+        
+        vote_casters = Vote.objects.filter(
+            card__column__retro_board=board
+        ).values('user').annotate(
+            votes_cast=Count('id')
+        ).order_by('-votes_cast')
+        
+        # Build anonymized user stats
+        user_ids = set()
+        for c in card_creators:
+            if c['created_by']:
+                user_ids.add(c['created_by'])
+        for v in vote_casters:
+            if v['user']:
+                user_ids.add(v['user'])
+        
+        # Create anonymous mapping
+        user_map = {uid: f"User {i+1}" for i, uid in enumerate(sorted(user_ids))}
+        
+        user_engagement = []
+        for uid in user_ids:
+            cards_created = next((c['cards_created'] for c in card_creators if c['created_by'] == uid), 0)
+            votes_cast = next((v['votes_cast'] for v in vote_casters if v['user'] == uid), 0)
+            user_engagement.append({
+                'user': user_map[uid],
+                'cards_created': cards_created,
+                'votes_cast': votes_cast
+            })
+        user_engagement.sort(key=lambda x: x['cards_created'] + x['votes_cast'], reverse=True)
+        
+        # ACTION ITEMS SUMMARY
+        action_items = ActionItem.objects.filter(retro_board=board)
+        action_summary = {
+            'total': action_items.count(),
+            'pending': action_items.filter(status='pending').count(),
+            'in_progress': action_items.filter(status='in_progress').count(),
+            'completed': action_items.filter(status='completed').count(),
+            'items': [{
+                'title': item.title,
+                'status': item.status,
+                'assignee': item.assignee.username if item.assignee else 'Unassigned'
+            } for item in action_items]
+        }
+        
+        # BOARD SUMMARY
+        board_summary = {
+            'title': board.title,
+            'total_cards': cards.count(),
+            'total_votes': Vote.objects.filter(card__column__retro_board=board).count(),
+            'total_participants': len(user_ids),
+            'columns': [{
+                'title': col.title,
+                'card_count': cards.filter(column=col).count()
+            } for col in board.columns.all()]
+        }
+        
+        report_data = {
+            'board_summary': board_summary,
+            'tag_summary': tag_summary,
+            'top_voted_cards': top_voted_list,
+            'user_engagement': user_engagement,
+            'action_items': action_summary
+        }
+        
+        # CSV EXPORT
+        if request.query_params.get('format') == 'csv':
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="board_{board.id}_report.csv"'
+            
+            writer = csv.writer(response)
+            
+            # Board Summary
+            writer.writerow(['BOARD SUMMARY'])
+            writer.writerow(['Title', board_summary['title']])
+            writer.writerow(['Total Cards', board_summary['total_cards']])
+            writer.writerow(['Total Votes', board_summary['total_votes']])
+            writer.writerow(['Total Participants', board_summary['total_participants']])
+            writer.writerow([])
+            
+            # Columns
+            writer.writerow(['COLUMNS'])
+            writer.writerow(['Column', 'Card Count'])
+            for col in board_summary['columns']:
+                writer.writerow([col['title'], col['card_count']])
+            writer.writerow([])
+            
+            # Tag Summary
+            writer.writerow(['TAG SUMMARY'])
+            writer.writerow(['Tag', 'Card Count'])
+            for tag in tag_summary:
+                writer.writerow([tag['tag'], tag['card_count']])
+            writer.writerow([])
+            
+            # Top Voted Cards
+            writer.writerow(['TOP VOTED CARDS'])
+            writer.writerow(['Content', 'Votes', 'Column', 'Tags'])
+            for card in top_voted_list:
+                writer.writerow([card['content'], card['votes'], card['column'], ', '.join(card['tags'])])
+            writer.writerow([])
+            
+            # User Engagement
+            writer.writerow(['USER ENGAGEMENT (Anonymized)'])
+            writer.writerow(['User', 'Cards Created', 'Votes Cast'])
+            for user in user_engagement:
+                writer.writerow([user['user'], user['cards_created'], user['votes_cast']])
+            writer.writerow([])
+            
+            # Action Items
+            writer.writerow(['ACTION ITEMS'])
+            writer.writerow(['Status Summary:', f"Pending: {action_summary['pending']}", f"In Progress: {action_summary['in_progress']}", f"Completed: {action_summary['completed']}"])
+            writer.writerow(['Title', 'Status', 'Assignee'])
+            for item in action_summary['items']:
+                writer.writerow([item['title'], item['status'], item['assignee']])
+            
+            return response
+        
+        return Response(report_data)
+
     @action(detail=True, methods=['post'])
     def start_voting(self, request, pk=None):
         """
