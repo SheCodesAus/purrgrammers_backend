@@ -260,11 +260,11 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         action_items = ActionItem.objects.filter(retro_board=board)
         action_summary = {
             'total': action_items.count(),
-            'pending': action_items.filter(status='pending').count(),
+            'todo': action_items.filter(status='todo').count(),
             'in_progress': action_items.filter(status='in_progress').count(),
             'completed': action_items.filter(status='completed').count(),
             'items': [{
-                'title': item.title,
+                'content': item.content,
                 'status': item.status,
                 'assignee': item.assignee.username if item.assignee else 'Unassigned'
             } for item in action_items]
@@ -335,10 +335,10 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
             
             # Action Items
             writer.writerow(['ACTION ITEMS'])
-            writer.writerow(['Status Summary:', f"Pending: {action_summary['pending']}", f"In Progress: {action_summary['in_progress']}", f"Completed: {action_summary['completed']}"])
-            writer.writerow(['Title', 'Status', 'Assignee'])
+            writer.writerow(['Status Summary:', f"To Do: {action_summary['todo']}", f"In Progress: {action_summary['in_progress']}", f"Completed: {action_summary['completed']}"])
+            writer.writerow(['Content', 'Status', 'Assignee'])
             for item in action_summary['items']:
-                writer.writerow([item['title'], item['status'], item['assignee']])
+                writer.writerow([item['content'], item['status'], item['assignee']])
             
             return response
         
