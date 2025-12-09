@@ -4,4 +4,4 @@ __pycache__/
 *.vscode
 staticfiles
 .env
-PROJECT_OVERVIEW.md
+PROJECT_OVERVIEW.mddb.sqlite3
