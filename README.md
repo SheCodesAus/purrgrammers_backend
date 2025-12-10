@@ -268,3 +268,16 @@ font-family: 'Raleway', sans-serif;
 (When Raleway is not available the standard font to be used is the Calibri font family)
 
 ![](./img/fonts.png)
+
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contributors
+
+- Emma Spear
+- Krista Soosaar
+- Tammy Healy
+- Juliane Gutierrez
+- Jinfeng Shan
