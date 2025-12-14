@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 # Our custom serializers and models
 from .serializers import UserRegistrationSerializer, CustomUserSerializer, EmailOrUsernameLoginSerializer, UserProfileSerializer, UserProfileWithTeamsSerializer
 from .models import UserProfile
+from backend_save_point.posthog_utils import track_event, identify_user
 
 # DJANGO REST FRAMEWORK CONCEPTS:
 # - generics: Pre-built view classes for common patterns (CreateAPIView, etc.)
@@ -111,7 +112,13 @@ class UserRegistrationView(generics.CreateAPIView):
             # If token exists, use it; if not, create new one
             token, created = Token.objects.get_or_create(user=user)
             
-            # STEP 3: Prepare user data for response
+            # STEP 3: Track registration in PostHog
+            identify_user(user)
+            track_event(user, 'user_registered', {
+                'registration_method': 'email',
+            })
+            
+            # STEP 4: Prepare user data for response
             # Use CustomUserSerializer for consistent user data format
             # Includes profile, teams, initials, etc.
             user_serializer = CustomUserSerializer(user)
@@ -196,6 +203,10 @@ class CustomAuthToken(ObtainAuthToken):
         # Get or create authentication token
         # If user already has token, reuse it; otherwise create new one
         token, created = Token.objects.get_or_create(user=user)
+        
+        # Track login in PostHog
+        identify_user(user)
+        track_event(user, 'user_logged_in', {})
 
         # Return token and complete user data using CustomUserSerializer
         # This gives frontend everything needed for immediate app setup

@@ -26,6 +26,7 @@ from .serializers import (
 )
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from backend_save_point.posthog_utils import track_event
 
 def broadcast_to_board(board_id, event_type, data):
     """
@@ -393,6 +394,12 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
             message = 'Voting has started!'
         else:
             message = f'Voting round {new_round.round_number} started'
+        
+        # Track voting started
+        track_event(request.user, 'voting_started', {
+            'board_id': board.id,
+            'round_number': new_round.round_number,
+        })
         
         # Broadcast to all connected clients
         try:
@@ -817,6 +824,13 @@ class CardViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         card = serializer.save(created_by=self.request.user)
 
+        # Track card creation
+        track_event(self.request.user, 'card_created', {
+            'board_id': card.retro_board.id if card.retro_board else None,
+            'card_id': card.id,
+            'is_anonymous': card.is_anonymous,
+        })
+
         # broadcast to all users viewing board
         if card.retro_board:
             broadcast_to_board(
@@ -907,6 +921,12 @@ class CardViewSet(viewsets.ModelViewSet):
             
             if vote_serializer.is_valid():
                 vote_serializer.save()  # VoteSerializer handles user assignment
+                
+                # Track vote
+                track_event(request.user, 'vote_added', {
+                    'board_id': card.column.retro_board.id,
+                    'card_id': card.id,
+                })
                 
                 # Broadcast vote to all users viewing the board
                 board_id = card.column.retro_board.id
