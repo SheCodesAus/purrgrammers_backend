@@ -594,9 +594,25 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         
         board.facilitators.add(user_to_add)
         
+        facilitators_data = RetroBoardSerializer(board, context={'request': request}).data['facilitators']
+        
+        # Broadcast facilitator change to all connected clients
+        try:
+            broadcast_to_board(
+                board.id,
+                'facilitators_updated',
+                {
+                    'action': 'added',
+                    'user': {'id': user_to_add.id, 'username': user_to_add.username},
+                    'facilitators': facilitators_data
+                }
+            )
+        except Exception as e:
+            print(f"WebSocket broadcast failed: {e}")
+        
         return Response({
             'message': f'{user_to_add.username} is now a facilitator',
-            'facilitators': RetroBoardSerializer(board, context={'request': request}).data['facilitators']
+            'facilitators': facilitators_data
         })
     
     @action(detail=True, methods=['post'])
@@ -644,9 +660,25 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         
         board.facilitators.remove(user_to_remove)
         
+        facilitators_data = RetroBoardSerializer(board, context={'request': request}).data['facilitators']
+        
+        # Broadcast facilitator change to all connected clients
+        try:
+            broadcast_to_board(
+                board.id,
+                'facilitators_updated',
+                {
+                    'action': 'removed',
+                    'user': {'id': user_to_remove.id, 'username': user_to_remove.username},
+                    'facilitators': facilitators_data
+                }
+            )
+        except Exception as e:
+            print(f"WebSocket broadcast failed: {e}")
+        
         return Response({
             'message': f'{user_to_remove.username} is no longer a facilitator',
-            'facilitators': RetroBoardSerializer(board, context={'request': request}).data['facilitators']
+            'facilitators': facilitators_data
         })
     
 # COLUMN MANAGEMENT - Ordered Content ViewSet
