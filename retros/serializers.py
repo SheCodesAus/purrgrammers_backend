@@ -22,6 +22,13 @@ class RetroBoardSerializer(serializers.ModelSerializer):
     action_items = serializers.SerializerMethodField() # action items
     current_voting_round = serializers.SerializerMethodField() # current active voting round
     
+    # Facilitator and permission fields
+    is_facilitator = serializers.SerializerMethodField()
+    facilitators = serializers.SerializerMethodField()
+    can_edit_columns = serializers.SerializerMethodField()
+    can_edit_board_title = serializers.SerializerMethodField()
+    can_delete_any_card = serializers.SerializerMethodField()
+    
     class Meta:
         model = RetroBoard
         # All fields that will be included in API responses
@@ -43,7 +50,16 @@ class RetroBoardSerializer(serializers.ModelSerializer):
             'team',
             'team_id',
             'columns',
-            'action_items'
+            'action_items',
+            # Facilitator and permission fields
+            'is_facilitator',
+            'facilitators',
+            'participants_can_edit_columns',
+            'participants_can_edit_board_title',
+            'participants_can_delete_any_card',
+            'can_edit_columns',
+            'can_edit_board_title',
+            'can_delete_any_card',
             ]
         # Fields that can't be modified via API (timestamps, auto-generated IDs)
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -131,6 +147,52 @@ class RetroBoardSerializer(serializers.ModelSerializer):
         """Get the active voting round"""
         active_round = obj.get_active_voting_round()
         return VotingRoundSerializer(active_round).data
+    
+    def get_is_facilitator(self, obj):
+        """Check if current user is a facilitator of this board"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.is_facilitator(request.user)
+        return False
+    
+    def get_facilitators(self, obj):
+        """Get list of facilitators with user info"""
+        facilitators = obj.facilitators.all().order_by('username')
+        result = []
+        for user in facilitators:
+            # Calculate initials
+            if user.first_name and user.last_name:
+                initials = user.first_name[0] + user.last_name[0]
+            else:
+                initials = user.username[:2].upper()
+            result.append({
+                'id': user.id,
+                'username': user.username,
+                'initials': initials,
+                'is_creator': user.id == obj.created_by_id
+            })
+        return result
+    
+    def get_can_edit_columns(self, obj):
+        """Check if current user can edit columns"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.can_edit_columns(request.user)
+        return False
+    
+    def get_can_edit_board_title(self, obj):
+        """Check if current user can edit board title"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.can_edit_board_title(request.user)
+        return False
+    
+    def get_can_delete_any_card(self, obj):
+        """Check if current user can delete any card"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.can_delete_any_card(request.user)
+        return False
 
 class TagSerializer(serializers.ModelSerializer):
     """

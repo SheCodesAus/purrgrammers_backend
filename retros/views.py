@@ -356,6 +356,13 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         POST /api/retro-boards/{id}/start_voting/
         """
         board = self.get_object()
+        
+        # Permission check: only facilitators can start voting
+        if not board.is_facilitator(request.user):
+            return Response({
+                'error': 'Only facilitators can start voting'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         current_round = board.get_active_voting_round()
         
         if current_round is not None:
@@ -409,6 +416,12 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reset_voting(self, request, pk=None):
         board = self.get_object()
+        
+        # Permission check: only facilitators can reset voting
+        if not board.is_facilitator(request.user):
+            return Response({
+                'error': 'Only facilitators can reset voting'
+            }, status=status.HTTP_403_FORBIDDEN)
 
         # delete all votes for board: vote -> card -> column -> retroboard
         Vote.objects.filter(card__column__retro_board=board).delete()
@@ -444,6 +457,13 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
         POST /api/retro-boards/{id}/stop_voting/
         """
         board = self.get_object()
+        
+        # Permission check: only facilitators can stop voting
+        if not board.is_facilitator(request.user):
+            return Response({
+                'error': 'Only facilitators can stop voting'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         current_round = board.get_active_voting_round()
 
         if current_round is None:
@@ -476,14 +496,158 @@ class RetroBoardViewSet(viewsets.ModelViewSet):
             'current_voting_round': None
         })
     
+    def update(self, request, *args, **kwargs):
+        """
+        Override update to check permissions for different fields:
+        - Title: requires can_edit_board_title permission
+        - Voting settings & permission toggles: requires facilitator
+        """
+        board = self.get_object()
+        user = request.user
+        
+        # Fields that require facilitator access
+        facilitator_only_fields = [
+            'max_votes_per_round',
+            'max_votes_per_card',
+            'participants_can_edit_columns',
+            'participants_can_edit_board_title',
+            'participants_can_delete_any_card',
+        ]
+        
+        # Check if trying to update facilitator-only fields
+        for field in facilitator_only_fields:
+            if field in request.data:
+                if not board.is_facilitator(user):
+                    return Response({
+                        'error': f'Only facilitators can change {field}'
+                    }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if trying to update title
+        if 'title' in request.data:
+            if not board.can_edit_board_title(user):
+                return Response({
+                    'error': 'You do not have permission to edit the board title'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        return super().update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Only facilitators can delete boards"""
+        board = self.get_object()
+        if not board.is_facilitator(request.user):
+            return Response({
+                'error': 'Only facilitators can delete this board'
+            }, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+    
     # websocket override - only need patch
     def perform_update(self, serializer):
         board = serializer.save()
         broadcast_to_board(
           board.id,
           'board_updated',
-          RetroBoardSerializer(board).data  
+          RetroBoardSerializer(board, context={'request': self.request}).data  
         )
+    
+    @action(detail=True, methods=['post'])
+    def add_facilitator(self, request, pk=None):
+        """
+        Add a user as facilitator to this board.
+        Only existing facilitators can add new facilitators.
+        User must be a team member.
+        
+        POST /api/retro-boards/{id}/add_facilitator/
+        Body: { "user_id": 123 }
+        """
+        board = self.get_object()
+        
+        # Permission check: only facilitators can add facilitators
+        if not board.is_facilitator(request.user):
+            return Response({
+                'error': 'Only facilitators can add other facilitators'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({
+                'error': 'user_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user_to_add = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is a team member (if board has a team)
+        if board.team and not board.team.members.filter(id=user_id).exists():
+            return Response({
+                'error': 'User must be a team member to be a facilitator'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if already a facilitator
+        if board.facilitators.filter(id=user_id).exists():
+            return Response({
+                'error': 'User is already a facilitator'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        board.facilitators.add(user_to_add)
+        
+        return Response({
+            'message': f'{user_to_add.username} is now a facilitator',
+            'facilitators': RetroBoardSerializer(board, context={'request': request}).data['facilitators']
+        })
+    
+    @action(detail=True, methods=['post'])
+    def remove_facilitator(self, request, pk=None):
+        """
+        Remove a facilitator from this board.
+        Only existing facilitators can remove facilitators.
+        Cannot remove the board creator.
+        
+        POST /api/retro-boards/{id}/remove_facilitator/
+        Body: { "user_id": 123 }
+        """
+        board = self.get_object()
+        
+        # Permission check: only facilitators can remove facilitators
+        if not board.is_facilitator(request.user):
+            return Response({
+                'error': 'Only facilitators can remove facilitators'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({
+                'error': 'user_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Cannot remove the creator
+        if user_id == board.created_by_id:
+            return Response({
+                'error': 'Cannot remove the board creator as facilitator'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user_to_remove = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user is a facilitator
+        if not board.facilitators.filter(id=user_id).exists():
+            return Response({
+                'error': 'User is not a facilitator'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        board.facilitators.remove(user_to_remove)
+        
+        return Response({
+            'message': f'{user_to_remove.username} is no longer a facilitator',
+            'facilitators': RetroBoardSerializer(board, context={'request': request}).data['facilitators']
+        })
     
 # COLUMN MANAGEMENT - Ordered Content ViewSet
 # ==============================================
@@ -499,6 +663,44 @@ class ColumnViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """POSITION-BASED ORDERING"""
         return Column.objects.all().order_by('position')
+    
+    def _check_column_permission(self, board, user):
+        """Check if user can edit columns on this board"""
+        if not board.can_edit_columns(user):
+            return Response({
+                'error': 'You do not have permission to edit columns on this board'
+            }, status=status.HTTP_403_FORBIDDEN)
+        return None
+    
+    def create(self, request, *args, **kwargs):
+        """Check permission before creating column"""
+        board_id = request.data.get('retro_board')
+        if board_id:
+            from .models import RetroBoard
+            try:
+                board = RetroBoard.objects.get(id=board_id)
+                error_response = self._check_column_permission(board, request.user)
+                if error_response:
+                    return error_response
+            except RetroBoard.DoesNotExist:
+                pass  # Let the serializer handle the invalid board_id
+        return super().create(request, *args, **kwargs)
+    
+    def update(self, request, *args, **kwargs):
+        """Check permission before updating column"""
+        column = self.get_object()
+        error_response = self._check_column_permission(column.retro_board, request.user)
+        if error_response:
+            return error_response
+        return super().update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Check permission before deleting column"""
+        column = self.get_object()
+        error_response = self._check_column_permission(column.retro_board, request.user)
+        if error_response:
+            return error_response
+        return super().destroy(request, *args, **kwargs)
     
     # RELATIONSHIP ACTION: Get Column Cards
   
@@ -601,6 +803,26 @@ class CardViewSet(viewsets.ModelViewSet):
                 'card_updated',
                 CardSerializer(card).data
             )
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Check permission before deleting card:
+        - Own cards: always allowed
+        - Others' cards: requires can_delete_any_card permission
+        """
+        card = self.get_object()
+        user = request.user
+        
+        # Users can always delete their own cards
+        if card.created_by_id != user.id:
+            # Trying to delete someone else's card
+            board = card.retro_board or (card.column.retro_board if card.column else None)
+            if board and not board.can_delete_any_card(user):
+                return Response({
+                    'error': 'You do not have permission to delete cards created by others'
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        return super().destroy(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         board_id = instance.retro_board.id if instance.retro_board else None

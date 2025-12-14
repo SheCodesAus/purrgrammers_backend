@@ -23,10 +23,62 @@ class RetroBoard(models.Model):
     max_votes_per_round = models.PositiveIntegerField(default=5)  # Total votes per user per round
     max_votes_per_card = models.PositiveIntegerField(null=True, blank=True)  # null = unlimited per card
     
+    # Facilitators - users who can control voting and board settings
+    # Creator is automatically added on save
+    facilitators = models.ManyToManyField(
+        User,
+        related_name='facilitated_boards',
+        blank=True,
+        help_text='Users who can control voting and board settings'
+    )
+    
+    # Toggleable permissions for participants
+    participants_can_edit_columns = models.BooleanField(
+        default=True,
+        help_text='Allow participants to create, edit, and delete columns'
+    )
+    participants_can_edit_board_title = models.BooleanField(
+        default=False,
+        help_text='Allow participants to change the board title'
+    )
+    participants_can_delete_any_card = models.BooleanField(
+        default=False,
+        help_text='Allow participants to delete cards created by others'
+    )
 
     def __str__(self):
         
         return self.title
+    
+    def save(self, *args, **kwargs):
+        """Override save to auto-add creator to facilitators"""
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        # Add creator to facilitators on first save
+        if is_new and self.created_by:
+            self.facilitators.add(self.created_by)
+    
+    def is_facilitator(self, user):
+        """Check if user has facilitator privileges."""
+        return self.facilitators.filter(id=user.id).exists()
+    
+    def can_edit_columns(self, user):
+        """Check if user can create/edit/delete columns."""
+        if self.is_facilitator(user):
+            return True
+        return self.participants_can_edit_columns
+    
+    def can_edit_board_title(self, user):
+        """Check if user can edit the board title."""
+        if self.is_facilitator(user):
+            return True
+        return self.participants_can_edit_board_title
+    
+    def can_delete_any_card(self, user):
+        """Check if user can delete cards they didn't create."""
+        if self.is_facilitator(user):
+            return True
+        return self.participants_can_delete_any_card
     
 
     def get_user_vote_count(self, user):
