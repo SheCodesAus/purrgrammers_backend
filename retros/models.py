@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -18,7 +20,10 @@ class RetroBoard(models.Model):
     is_active = models.BooleanField(default=True)
     # One team per board; a team can have multiple boards
     team = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='retro_boards')
-    
+
+    # Unique invite code for shareable join links
+    invite_code = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+
     # Voting configuration
     max_votes_per_round = models.PositiveIntegerField(default=5)  # Total votes per user per round
     max_votes_per_card = models.PositiveIntegerField(null=True, blank=True)  # null = unlimited per card

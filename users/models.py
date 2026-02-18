@@ -41,6 +41,7 @@ class CustomUser(AbstractUser):
     # DateTimeField with auto_now_add=True sets timestamp only on creation
     # This tracks when the user account was created (immutable)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_guest = models.BooleanField(default=False)
 
     # INHERITED FROM AbstractUser (we get these for free):
     # - username: CharField(max_length=150, unique=True)

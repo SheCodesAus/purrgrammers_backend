@@ -60,9 +60,10 @@ class RetroBoardSerializer(serializers.ModelSerializer):
             'can_edit_columns',
             'can_edit_board_title',
             'can_delete_any_card',
+            'invite_code',
             ]
         # Fields that can't be modified via API (timestamps, auto-generated IDs)
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'invite_code']
     
     def create(self, validated_data):
         # Override create to automatically set created_by to current user

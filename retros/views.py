@@ -9,9 +9,13 @@
 
 # IMPORTS - DRF Core Components
 # ===============================
+import uuid
+
 from rest_framework import viewsets, permissions, status  # Core DRF classes
 from rest_framework.decorators import action             # Custom endpoint decorator
 from rest_framework.response import Response             # JSON response wrapper
+from rest_framework.views import APIView                 # For standalone views
+from rest_framework.authtoken.models import Token        # Token auth
 from django.contrib.auth import get_user_model          # Dynamic user model reference
 from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag, VotingRound
 from .serializers import (
@@ -1253,3 +1257,87 @@ class TagViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class JoinBoardView(APIView):
+    """
+    Join a board via invite link.
+
+    GET: Returns board info for the join page (no auth required)
+    POST: Joins the board — creates a guest account if not authenticated
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, invite_code):
+        """Return board title and team name for the join page."""
+        try:
+            board = RetroBoard.objects.select_related('team').get(invite_code=invite_code)
+        except RetroBoard.DoesNotExist:
+            return Response(
+                {'error': 'Invalid or expired invite link'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response({
+            'board_title': board.title,
+            'team_name': board.team.name if board.team else None,
+            'board_id': board.id,
+        })
+
+    def post(self, request, invite_code):
+        """Join the board. Creates guest account if not authenticated."""
+        try:
+            board = RetroBoard.objects.select_related('team').get(invite_code=invite_code)
+        except RetroBoard.DoesNotExist:
+            return Response(
+                {'error': 'Invalid or expired invite link'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not board.team:
+            return Response(
+                {'error': 'This board has no team assigned'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        User = get_user_model()
+        user = request.user if request.user.is_authenticated else None
+
+        if user is None:
+            # Guest flow: create a lightweight guest account
+            display_name = request.data.get('display_name', '').strip()
+            if not display_name:
+                return Response(
+                    {'error': 'display_name is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            guest_uuid = uuid.uuid4().hex[:12]
+            user = User.objects.create_user(
+                username=f'guest_{guest_uuid}',
+                email=f'guest-{uuid.uuid4()}@guest.purrgrammers.app',
+                password=uuid.uuid4().hex,
+                first_name=display_name,
+                is_guest=True,
+            )
+            token, _ = Token.objects.get_or_create(user=user)
+        else:
+            token = Token.objects.filter(user=user).first()
+
+        # Add to team if not already a member
+        from teams.models import TeamMembership
+        TeamMembership.objects.get_or_create(
+            team=board.team,
+            user=user,
+            defaults={'added_by': None}
+        )
+
+        response_data = {'board_id': board.id}
+
+        # Return auth data for guest users so the frontend can log them in
+        if user.is_guest:
+            from users.serializers import CustomUserSerializer
+            response_data['token'] = token.key
+            response_data['user'] = CustomUserSerializer(user).data
+
+        return Response(response_data, status=status.HTTP_200_OK)

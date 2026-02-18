@@ -43,5 +43,6 @@ router.register(r'tags', views.TagViewSet)                # Tag list (read-only)
 # Include all router-generated URLs under the retros/ prefix
 # Main urls.py will include this as: path('api/', include('retros.urls'))
 urlpatterns = [
+    path('retro-boards/join/<uuid:invite_code>/', views.JoinBoardView.as_view(), name='join-board'),
     path('', include(router.urls)),  # Includes ALL generated REST endpoints
 ]
