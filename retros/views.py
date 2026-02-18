@@ -17,6 +17,7 @@ from rest_framework.response import Response             # JSON response wrapper
 from rest_framework.views import APIView                 # For standalone views
 from rest_framework.authtoken.models import Token        # Token auth
 from django.contrib.auth import get_user_model          # Dynamic user model reference
+from django.db.models import Prefetch
 from .models import RetroBoard, Column, Card, Vote, Comment, ActionItem, Tag, VotingRound
 from .serializers import (
     RetroBoardSerializer,
@@ -1341,3 +1342,94 @@ class JoinBoardView(APIView):
             response_data['user'] = CustomUserSerializer(user).data
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class DashboardView(APIView):
+    """
+    Single endpoint for the dashboard.
+    Returns all teams, boards, columns, cards, and action items
+    the authenticated user has access to — in one request.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from teams.models import Team
+
+        # Get all teams the user belongs to, with boards and nested data prefetched
+        teams = Team.objects.filter(
+            memberships__user=request.user
+        ).prefetch_related(
+            Prefetch(
+                'retro_boards',
+                queryset=RetroBoard.objects.prefetch_related(
+                    Prefetch(
+                        'columns',
+                        queryset=Column.objects.prefetch_related(
+                            Prefetch(
+                                'cards',
+                                queryset=Card.objects.select_related('created_by')
+                            )
+                        ).order_by('position')
+                    ),
+                    Prefetch(
+                        'action_items',
+                        queryset=ActionItem.objects.select_related('assignee')
+                    ),
+                )
+            )
+        )
+
+        data = []
+        for team in teams:
+            boards_data = []
+            for board in team.retro_boards.all():
+                columns_data = []
+                for column in board.columns.all():
+                    cards_data = [
+                        {
+                            'id': card.id,
+                            'created_by': {
+                                'id': card.created_by.id,
+                                'first_name': card.created_by.first_name,
+                                'username': card.created_by.username,
+                            } if card.created_by else None,
+                            'created_at': card.created_at,
+                        }
+                        for card in column.cards.all()
+                    ]
+                    columns_data.append({
+                        'id': column.id,
+                        'title': column.title,
+                        'color': column.color,
+                        'cards': cards_data,
+                    })
+
+                action_items_data = [
+                    {
+                        'id': item.id,
+                        'content': item.content,
+                        'status': item.status,
+                        'assignee': {
+                            'id': item.assignee.id,
+                            'first_name': item.assignee.first_name,
+                            'username': item.assignee.username,
+                        } if item.assignee else None,
+                    }
+                    for item in board.action_items.all()
+                ]
+
+                boards_data.append({
+                    'id': board.id,
+                    'title': board.title,
+                    'is_active': board.is_active,
+                    'created_at': board.created_at,
+                    'columns': columns_data,
+                    'action_items': action_items_data,
+                })
+
+            data.append({
+                'team': {'id': team.id, 'name': team.name},
+                'boards': boards_data,
+            })
+
+        return Response(data)
